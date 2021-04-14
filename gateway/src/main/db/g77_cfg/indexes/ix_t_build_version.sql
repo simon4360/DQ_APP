@@ -1,0 +1,1 @@
+create unique index g77_cfg.ux_build_version on t_build_version ('1');

@@ -1,0 +1,731 @@
+import com.microgen.buildtools.appsrv.aptitude.AptitudeServerController;
+import com.microgen.buildtools.appsrv.aptitude.AptitudeServerConstants;
+import com.microgen.buildtools.appsrv.SudoCommand;
+import com.microgen.buildtools.appsrv.ShellCommand;
+
+
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import org.apache.tools.ant.filters.ReplaceTokens;
+
+final String BRD_FILE_DEPLOYMENT_GROUP      = "Deploying Aptitude deployment packages to the Aptitude Server";
+final String APTITUDE_PROJECT_CONTROL_GROUP = "Controlling Aptitude projects deployed to the Aptitude Server";
+
+final Path PATH_TO_APTITUDE_SRC_DIR   = Paths.get ( projectDir.toURI() ).resolve ( 'src' ).resolve ( 'main' ).resolve ( 'aptitude' );
+final Path PATH_TO_APTITUDE_BUILD_DIR = Paths.get ( buildDir.toURI() ).resolve ( 'aptitude' );
+
+task deployAptitudeExecutionFolders () {
+    group       = BRD_FILE_DEPLOYMENT_GROUP
+    description = "\n"                                                                                                                                      +
+                  "Description        : Create 'Aptitude execution folders' on the Aptitude Server supporting the $env environment.\n"                      +
+                  "                   : For each subdirectory of the folder $PATH_TO_APTITUDE_SRC_DIR, one Aptitude execution folder \n"                    +
+                  "                   : will be created.\n"                                                                                                 +
+                  "                   : Their names will be equal."                                                                                         +
+                  "\n"                                                                                                                                      +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state. \n"                           +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectDeployer = new AptitudeServerController (   env
+                                                                                ,   envProperties.aptitudeHost
+                                                                                ,   envProperties.aptitudeLinuxUsername
+                                                                                ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                ,   envProperties.aptitudeProjectDeploymentUsername
+                                                                                ,   envProperties.aptitudeProjectDeploymentPassword
+                                                                                );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       projectDeployer.addExecutionFolder ( executionFolder.fileName.toString() );
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task deleteAptitudeExecutionFolders () {
+    group       = BRD_FILE_DEPLOYMENT_GROUP;
+    description = "\n"                                                                                                                                          +
+                  "Description        : Delete 'Aptitude execution folders' on the Aptitude Server supporting the $env environment.\n"        +
+                  "                   : For each subdirectory of the folder $PATH_TO_APTITUDE_SRC_DIR, the Aptitude execution folder\n"              +
+                  "                   : whose name matches that subdirectory will deleted from the Aptitude Server supporting the $env environment."   +
+                  "\n"                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state. \n"                      +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectDeployer = new AptitudeServerController (   env
+                                                                                ,   envProperties.aptitudeHost
+                                                                                ,   envProperties.aptitudeLinuxUsername
+                                                                                ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                ,   envProperties.aptitudeProjectDeploymentUsername
+                                                                                ,   envProperties.aptitudeProjectDeploymentPassword
+                                                                                );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       projectDeployer.deleteExecutionFolder ( executionFolder.fileName.toString() );
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task startAptitudeProjects {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For each Aptitude deployment package (.brd & .brd.config) file located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to start the deployed project created from the .brd file"                                                                   +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "                   : (2) Each project which this task attempts to start must be in a 'stopped' state.\n"                                                     +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                        Files.newDirectoryStream ( executionFolder , "*.{brd}" ).each {
+                                           aptitudeProject ->  projectController.startAptitudeProject ( executionFolder.fileName.toString() , aptitudeProject.fileName.toString().tokenize('.').first() );
+                                        }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task startAptitudeSourceProjects {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For Aptitude Source Project ONLY deployment package (.brd & .brd.config) files located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to start the deployed project created from the .brd file"                                                                   +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "                   : (2) Each project which this task attempts to start must be in a 'stopped' state.\n"                                                     +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                        Files.newDirectoryStream ( executionFolder , "{g77_src_*.brd}" ).each {
+                                           aptitudeProject ->  projectController.startAptitudeProject ( executionFolder.fileName.toString() , aptitudeProject.fileName.toString().tokenize('.').first() );
+                                        }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task startAptitudeTargetProjects {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For Aptitude Target Project ONLY deployment package (.brd & .brd.config) files located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to start the deployed project created from the .brd file"                                                                   +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "                   : (2) Each project which this task attempts to start must be in a 'stopped' state.\n"                                                     +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                        Files.newDirectoryStream ( executionFolder , "{g77_tgt_*.brd}" ).each {
+                                           aptitudeProject ->  projectController.startAptitudeProject ( executionFolder.fileName.toString() , aptitudeProject.fileName.toString().tokenize('.').first() );
+                                        }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task startAptitudeIndividualProject {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For Aptitude Target Project ONLY deployment package (.brd & .brd.config) files located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to start the deployed project created from the .brd file"                                                                   +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "                   : (2) Each project which this task attempts to start must be in a 'stopped' state.\n"                                                     +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                        Files.newDirectoryStream ( executionFolder , projectName ).each {
+                                           aptitudeProject ->  projectController.startAptitudeProject ( executionFolder.fileName.toString() , aptitudeProject.fileName.toString().tokenize('.').first() );
+                                        }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task stopAptitudeProjects {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For each Aptitude deployment package (.brd & .brd.config file) located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to stop the deployed project created from the .brd file"                                                                    +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       Files.newDirectoryStream ( executionFolder , "*.{brd}" ).each {
+                                           try {
+                                               projectController.stopAptitudeProject ( executionFolder.fileName.toString() , it.fileName.toString().tokenize('.').first() );
+                                           }
+                                           catch ( Exception e ) {
+
+                                           }
+                                       }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task stopAptitudeSourceProjects {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For Aptitude Source project deployment packages (.brd & .brd.config file) located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to stop the deployed project created from the .brd file"                                                                    +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       Files.newDirectoryStream ( executionFolder , "{g77_src_*.brd}" ).each {
+                                           try {
+                                               projectController.stopAptitudeProject ( executionFolder.fileName.toString() , it.fileName.toString().tokenize('.').first() );
+                                           }
+                                           catch ( Exception e ) {
+
+                                           }
+                                       }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task stopAptitudeTargetProjects {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For Aptitude Target Project deployment packagaes (.brd & .brd.config file) located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to stop the deployed project created from the .brd file"                                                                    +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       Files.newDirectoryStream ( executionFolder , "{g77_tgt_*.brd}" ).each {
+                                           try {
+                                               projectController.stopAptitudeProject ( executionFolder.fileName.toString() , it.fileName.toString().tokenize('.').first() );
+                                           }
+                                           catch ( Exception e ) {
+
+                                           }
+                                       }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task stopAptitudeIndividualProject {
+    group       = APTITUDE_PROJECT_CONTROL_GROUP;
+    description = "\n"                                                                                                                                                          +
+                  "Description        : For Aptitude Source project deployment packages (.brd & .brd.config file) located in the subdirectories of $PATH_TO_APTITUDE_SRC_DIR\n"   +
+                  "                   : (1) assume that the .brd file has been deployed to the Aptitude Server supporting the $env environment\n"                      +
+                  "                   : (2) attempt to stop the deployed project created from the .brd file"                                                                    +
+                  "\n"                                                                                                                                                          +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state.\n"                                       +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    doLast {
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_SRC_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       Files.newDirectoryStream ( executionFolder , projectName ).each {
+                                           try {
+                                               projectController.stopAptitudeProject ( executionFolder.fileName.toString() , it.fileName.toString().tokenize('.').first() );
+                                           }
+                                           catch ( Exception e ) {
+
+                                           }
+                                       }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}            
+
+task prepareAptitudeProjects ( type: Copy , dependsOn: clean ) {
+    group       = BRD_FILE_DEPLOYMENT_GROUP
+    description = "\n"                                                                                                                              +
+                  "Description        : For each Aptitude deployment package (.brd & .brd.config file) located in the subdirectories of\n" +
+                  "                   : $PATH_TO_APTITUDE_SRC_DIR, prepare a copy which can be deployed to the $env environment.\n"                 +
+                  "                   : The prepared copies will be created at $PATH_TO_APTITUDE_BUILD_DIR."                                        +
+                  "\n"                                                                                                                              +
+                  "Pre-conditions     : None.\n"                                                                                                    +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_SRC_DIR );
+    }
+
+    from ( PATH_TO_APTITUDE_SRC_DIR.toFile().toString() ) {
+        exclude     '**/*.config'
+    }
+    from ( PATH_TO_APTITUDE_SRC_DIR.toFile().toString() ) {
+        include     '**/*.config'
+        filter      ( ReplaceTokens , tokens : [ env : env ] )
+        filter      ( ReplaceTokens , tokens : envProperties )
+    }
+    into PATH_TO_APTITUDE_BUILD_DIR.toFile()
+}
+
+task deployAptitudeProjects ( dependsOn: [ prepareAptitudeProjects ] ) {
+    group       = BRD_FILE_DEPLOYMENT_GROUP
+    description = "\n"                                                                                                                                                                                  +
+                  "Description        : For each Aptitude deployment package (.brd & .brd.config file) located in the subdirectories of\n"                                                     +
+                  "                   : $PATH_TO_APTITUDE_BUILD_DIR, deploy it to the Aptitude Server supporting the $env environment.\n"                                                      +
+                  "                   : Notes (1) This task requires that a parameter 'brdFileSet' be supplied.\n"                                                                                      +
+                  "                   :       (2) 'brdFileSet' can assume one of two values.\n"                                                                                                         +
+                  "                   :       (2a)'all'\n"                                                                                                                                              +
+                  "                   :            -> every Aptitude deployment package file located in the folder $PATH_TO_APTITUDE_BUILD_DIR will be deployed.\n"                            +
+                  "                   :       (2b)'<name of a specific brd file>'\n"                                                                                                                    +
+                  "                   :            -> only the nominated Aptitude deployment package will be deployed.\n"    
+                  "                   :        (3) This task requires that a parameter 'PstartAptitudeProjects' be supplied [yes|no].\n"                                                       + 
+                  "                   : Sample invocations : (1) gradle -Penv=$env -PdeployToPrimaryEnv=Y -PdeployToHAServer=N -PbrdFileSet=all -PstartAptitudeProjects=no      :gateway:deployAptitudeProjects\n"  +
+                  "                   :                      (2) gradle -Penv=$env -PdeployToPrimaryEnv=Y -PdeployToHAServer=N -PbrdFileSet=FeedTransfer.brd -PstartAptitudeProjects=yes :gateway:deployAptitudeProjects"    +
+                  "\n"                                                                                                                                                                                  +
+                  "Pre-conditions     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state. \n"                                                              +
+                  "Output / log files : None."
+                  ;
+
+    onlyIf {
+        project.hasProperty ( 'brdFileSet' );
+        Files.exists ( PATH_TO_APTITUDE_BUILD_DIR );
+    }
+    
+    mustRunAfter { 
+      [ deployAptitudeUtilsProject ]
+    }
+    
+    doLast {
+        assert ( brdFileSet == 'all' || brdFileSet.tokenize ( '.' ).last() == 'brd' );
+        assert ( startAptitudeProjects.toLowerCase() == 'yes' || startAptitudeProjects.toLowerCase() == 'no');        
+
+        SudoCommand.createFolder (   envProperties.aptitudeLinuxUsername
+                                 ,   Paths.get ( AptitudeServerConstants.getPathToTempUploadDir ( env ) )
+                                 );
+
+        AptitudeServerController projectDeployer = new AptitudeServerController   (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectDeploymentUsername
+                                                                                  ,   envProperties.aptitudeProjectDeploymentPassword
+                                                                                  );
+
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_BUILD_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       DirectoryStream projectDirStream = Files.newDirectoryStream ( executionFolder , "*.{brd}" );
+                                     
+                                    // Test for existence of a supplied project file
+                                    //
+                                    if (brdFileSet != 'all') {
+                                      String filePath = PATH_TO_APTITUDE_BUILD_DIR.toString() + "/" + executionFolder.fileName.toString()  + "/" + brdFileSet;
+                                      logger.info("Checking for existence of project: " + filePath);
+                                      if (!file("file:" + filePath).exists()) {
+                                        throw new GradleException("Failed to find project file specified: " + filePath);
+                                      }
+                                    }
+                                       projectDeployer.addExecutionFolder ( executionFolder.fileName.toString() );
+                                       try {
+                                           projectDirStream.each {
+                                               aptitudeProject -> if ( brdFileSet in [ 'all' , aptitudeProject.fileName.toString() ] ) {                                                                      
+
+                                                                      DirectoryStream projectFilesDirStream = Files.newDirectoryStream ( executionFolder , '{' + aptitudeProject.fileName.toString().tokenize('.').first() + '}.*' );
+                                                                      try {
+                                                                          projectFilesDirStream.each {
+                                                                              SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , it , AptitudeServerConstants.getPathToTempUploadDir ( env ) );
+                                                                          }
+
+                                                                          projectDeployer.deployProjectToAptitude (   executionFolder.fileName.toString()
+                                                                                                                  ,   AptitudeServerConstants.getPathToTempUploadDir ( env ) + aptitudeProject.fileName.toString()
+                                                                                                                  );
+                                                                          if ( startAptitudeProjects.toLowerCase() == 'yes' ) {
+                                                                            projectController.startAptitudeProject  (   executionFolder.fileName.toString()
+                                                                                                                  ,   aptitudeProject.fileName.toString().tokenize('.').first()
+                                                                                                                  );
+                                                                          }
+                                                                         // projectDeployer.pingProject ( aptitudeProject.fileName.toString().tokenize('.').first() );
+                                                                      }
+                                                                      catch ( Exception e ) {
+                                                                          throw e;
+                                                                      }
+                                                                      finally {
+                                                                          projectFilesDirStream.close();
+                                                                      }
+                                                                  }
+                                           }
+                                       }
+                                       catch ( Exception e ) {
+                                           throw e;
+                                       }
+                                       finally {
+                                           projectDirStream.close();
+                                       }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+
+task deployAptitudeUtilsProject ( dependsOn: [ prepareAptitudeProjects ] ) {
+    group       = BRD_FILE_DEPLOYMENT_GROUP
+    description = "Deploy g77_utils project \n"                                                                                                                                                                                  
+                  ;
+
+    String  utilsBrdFileSet   = new String ( "g77_utils.brd" )
+     
+    onlyIf {
+        Files.exists ( PATH_TO_APTITUDE_BUILD_DIR );
+    }
+    doLast {
+
+        SudoCommand.createFolder (   envProperties.aptitudeLinuxUsername
+                                 ,   Paths.get ( AptitudeServerConstants.getPathToTempUploadDir ( env ) )
+                                 );
+
+        AptitudeServerController projectDeployer = new AptitudeServerController   (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectDeploymentUsername
+                                                                                  ,   envProperties.aptitudeProjectDeploymentPassword
+                                                                                  );
+
+        AptitudeServerController projectController = new AptitudeServerController (   env
+                                                                                  ,   envProperties.aptitudeHost
+                                                                                  ,   envProperties.aptitudeLinuxUsername
+                                                                                  ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                  ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                  ,   envProperties.aptitudeProjectControllerUsername
+                                                                                  ,   envProperties.aptitudeProjectControllerPassword
+                                                                                  );
+
+        DirectoryStream aptitudeSrcDirStream = Files.newDirectoryStream ( PATH_TO_APTITUDE_BUILD_DIR );
+
+        try {
+            aptitudeSrcDirStream.each {
+                executionFolder -> if ( Files.isDirectory ( executionFolder ) && ! Files.isHidden ( executionFolder ) ) {
+                                       DirectoryStream projectDirStream = Files.newDirectoryStream ( executionFolder , "*.{brd}" );
+                                     
+                                    // Test for existence of a supplied project file
+                                    //
+                                    if (utilsBrdFileSet != 'all') {
+                                      String filePath = PATH_TO_APTITUDE_BUILD_DIR.toString() + "/" + executionFolder.fileName.toString()  + "/" + utilsBrdFileSet;
+                                      logger.info("Checking for existence of project: " + filePath);
+                                      if (!file("file:" + filePath).exists()) {
+                                        throw new GradleException("Failed to find project file specified: " + filePath);
+                                      }
+                                    }
+                                       projectDeployer.addExecutionFolder ( executionFolder.fileName.toString() );
+                                       try {
+                                           projectDirStream.each {
+                                               aptitudeProject -> if ( utilsBrdFileSet in [ 'all' , aptitudeProject.fileName.toString() ] ) {                                                                      
+
+                                                                      DirectoryStream projectFilesDirStream = Files.newDirectoryStream ( executionFolder , '{' + aptitudeProject.fileName.toString().tokenize('.').first() + '}.*' );
+                                                                      try {
+                                                                          projectFilesDirStream.each {
+                                                                              SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , it , AptitudeServerConstants.getPathToTempUploadDir ( env ) );
+                                                                          }
+
+                                                                          projectDeployer.deployProjectToAptitude (   executionFolder.fileName.toString()
+                                                                                                                  ,   AptitudeServerConstants.getPathToTempUploadDir ( env ) + aptitudeProject.fileName.toString()
+                                                                                                                  );
+                                                                          projectController.startAptitudeProject  (   executionFolder.fileName.toString()
+                                                                                                                  ,   aptitudeProject.fileName.toString().tokenize('.').first()
+                                                                                                                  );
+
+                                                                         // projectDeployer.pingProject ( aptitudeProject.fileName.toString().tokenize('.').first() );
+                                                                      }
+                                                                      catch ( Exception e ) {
+                                                                          throw e;
+                                                                      }
+                                                                      finally {
+                                                                          projectFilesDirStream.close();
+                                                                      }
+                                                                  }
+                                           }
+                                       }
+                                       catch ( Exception e ) {
+                                           throw e;
+                                       }
+                                       finally {
+                                           projectDirStream.close();
+                                       }
+                                   }
+            }
+        }
+        catch ( Exception e ) {
+            throw e;
+        }
+        finally {
+            aptitudeSrcDirStream.close();
+        }
+    }
+}
+

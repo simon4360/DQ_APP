@@ -1,0 +1,394 @@
+import com.microgen.buildtools.appsrv.SudoCommand;
+import com.microgen.buildtools.appsrv.batch.BatchConstants;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+
+import org.apache.tools.ant.filters.ReplaceTokens;
+import org.apache.tools.ant.taskdefs.condition.Os;
+import org.apache.tools.ant.filters.FixCrLfFilter;
+
+final String DATABASE_CONFIG_DEPLOYMENT_GROUP = '* G77 Configuration Dataset deployment';
+
+final Path PATH_TO_CONFIG_SRC_DIR   = Paths.get ( projectDir.toURI() ).resolve ( 'src' ).resolve ( 'main' );
+final Path PATH_TO_CONFIG_BUILD_DIR = Paths.get ( buildDir.toURI() ).resolve ( 'main' ).resolve ( 'configDataSets' );
+final Path PATH_TO_LOG_FOLDER       = Paths.get ( rootDir.toURI() ).resolve ( 'log' ).resolve ( Paths.get ( rootDir.toURI() ).relativize ( Paths.get ( projectDir.toURI () ) ) );
+
+task prepareConfigurationDbScripts ( dependsOn : clean ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Prepare configuration dataset scripts."
+
+    onlyIf {
+        Files.exists ( PATH_TO_CONFIG_SRC_DIR )
+    }
+
+    doLast {
+        copy {
+            from    PATH_TO_CONFIG_SRC_DIR.toFile()
+            into    PATH_TO_CONFIG_BUILD_DIR.toFile()
+            filter  ( ReplaceTokens , tokens : [ env : env ] )
+            filter  ( ReplaceTokens , tokens : envProperties )
+            include '**/*.sql'
+            include '**/*.sh'
+            include '**/*.ctl'
+        }
+       
+        if ( Os.isFamily ( Os.FAMILY_UNIX ) ) {
+            ant.chmod ( dir: PATH_TO_CONFIG_BUILD_DIR.toFile() , perm: '700' , includes: '**/*.sh' )
+        }
+    }
+}
+
+task testConfigurationScriptQuality ( type : Test , dependsOn : [ cleanTest , prepareConfigurationDbScripts ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Validate the basic quality of the configuration scripts."
+
+    onlyIf {
+        Files.exists ( PATH_TO_CONFIG_BUILD_DIR )
+    }
+
+    dependencies {
+        testCompile project ( ':quality' )
+    }
+
+    systemProperties 'test.codeRoot'                 : PATH_TO_CONFIG_BUILD_DIR.toString ()
+    systemProperties 'test.oracleHost'               : envProperties.oracleHost
+    systemProperties 'test.oracleServiceName'        : envProperties.oracleServiceName
+    systemProperties 'test.oracleJdbcUrl'            : envProperties.oracleJdbcUrl
+    systemProperties 'test.g77_cfgUsername'          : envProperties.g77_cfgUsername
+	systemProperties 'test.g77_cfg_arcUsername'      : envProperties.g77_cfg_arcUsername
+    include 'com/microgen/quality/db/code/TestConfigurations*'
+    exclude 'com/microgen/quality/db/deployment/**'
+}
+
+task uninstallConfigurationDbScripts ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Undeploy a configuration dataset by providing parameter -Pconfig=[configDatasetName]."
+
+    onlyIf {
+        project.hasProperty ( 'config' );
+        ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( testSet ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'uninstall.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'uninstall.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'uninstall.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task deployConfigurationFullDbScripts ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy a configuration dataset by providing parameter -Pconfig=[configDatasetName]."
+
+    onlyIf {
+        project.hasProperty ( 'config' );
+        ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.err' ) , StandardOpenOption.CREATE )
+        }        
+    }
+}
+
+task deployConfigurationUpgradeDbScripts ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy a configuration dataset by providing parameter -Pconfig=[configDatasetName]."
+
+    onlyIf {
+        project.hasProperty ( 'config' );
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'upgrade_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task onboardGeneralMappings ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset configData - FULL"
+    
+    String  config   = new String ( "configData" )
+
+    onlyIf {
+        ( ! ( env in [ 'uat' , 'prod' ] )) ;
+    }
+    
+    mustRunAfter {
+        [ deployConfigurationDataFull ]
+    }   
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).resolve ( 'batch' ).resolve ( 'os' ).toFile()
+            executable     = './onboardGeneralMappings.sh'
+        }        
+    }
+}
+
+
+
+task deployConfigurationDataFull ( dependsOn: [ testConfigurationScriptQuality  ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset configData - FULL"
+    
+    String  config   = new String ( "configData" )
+
+    onlyIf {
+        ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.err' ) , StandardOpenOption.CREATE )
+        }        
+    }
+}
+
+
+task deployConfigurationDataUpgrade ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset configData - UPGRADE"
+    
+    String  config   = new String ( "configData" )
+
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'upgrade_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+
+task deployExternalGrantsFull ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset grantPrivileges - FULL"
+    
+    String  config   = new String ( "grantPrivileges" )
+
+    onlyIf {
+        ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+    
+    mustRunAfter {
+        [ deployConfigurationDataFull, deployMockIntegrationFull ]
+    }
+
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.err' ) , StandardOpenOption.CREATE )
+        }        
+    }
+}
+
+
+task deployExternalGrantsUpgrade ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset grantPrivileges - UPGRADE"
+    
+    String  config   = new String ( "grantPrivileges" )
+
+    mustRunAfter {
+        [ deployConfigurationDataUpgrade, deployMockIntegrationUpgrade ]
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'upgrade_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task deployMockIntegrationFull ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset mockIntegration - FULL"
+    
+    String  config   = new String ( "mockIntegration" )
+
+    onlyIf {
+       ( env in [ 'dev', 'dev_new', 'ci', 'ci_new' ] ) ;
+    }
+
+    mustRunAfter {
+        [ deployConfigurationDataFull ]
+    }
+
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.err' ) , StandardOpenOption.CREATE )
+        }        
+    }
+}
+
+
+task deployMockIntegrationUpgrade ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset mockIntegration"
+    
+    String  config   = new String ( "mockIntegration" )
+ 
+    mustRunAfter {
+        [ deployConfigurationDataUpgrade ]
+    }   
+   
+    onlyIf {
+       ( env in [ 'dev', 'dev_new', 'ci', 'ci_new' ] ) ;
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'upgrade_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task deploySyncObjectsDemo ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset mockIntegration"
+    
+    String  config   = new String ( "sync_object_demo" )
+   
+    onlyIf {
+       ( env in [ 'dev', 'ci' ] ) ;
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task deployPartitionInitialisation ( dependsOn: [ testConfigurationScriptQuality ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy Configuration Dataset archivingPartitions"
+    
+    String  config   = new String ( "partitionInitialisation" )
+
+   
+    onlyIf {
+       ( env in [ 'dev', 'dev_new', 'ci', 'ci_new' ] ) ;
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" ).resolve ( config );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+
+        exec {
+            workingDir     = PATH_TO_CONFIG_BUILD_DIR.resolve ( config ).toFile()
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.err' ) , StandardOpenOption.CREATE )
+        }
+		
+		ant.touch(file:"build.complete")
+    }
+}
+
+task deployConfigDataSets ( dependsOn: [ deployConfigurationDataUpgrade, deployMockIntegrationUpgrade, deployExternalGrantsUpgrade ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy All Configuration Datasets - UPGRADE."
+   mustRunAfter {
+    [':gateway:buildFullDb', ':gateway:buildUpgradeDb' ]
+  }
+}
+
+task deployConfigDataSetsFull ( dependsOn: [ deployConfigurationDataFull, deployMockIntegrationFull, deployExternalGrantsFull, onboardGeneralMappings ] ) {
+    group       = DATABASE_CONFIG_DEPLOYMENT_GROUP;
+    description = "Deploy All Configuration Datasets - FULL."
+ mustRunAfter {
+    [':gateway:buildFullDb', ':gateway:buildUpgradeDb' ]
+  }
+}

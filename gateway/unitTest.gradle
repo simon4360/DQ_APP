@@ -1,0 +1,52 @@
+dependencies {
+    compile project ( ':quality' )
+}
+
+test {
+    if (!project.hasProperty("smokeTest")) {
+      ext.smokeTest = "no"
+    }
+    onlyIf {
+       ! ( env in [ 'uat', 'prod' ] ) || smokeTest == 'yes';;
+    }
+    doFirst {
+        systemProperty 'test.env' , "${env}";
+        envProperties.each {
+             final String KEY = 'test.' + it.key;
+             systemProperty "$KEY" , it.value;
+        }
+      
+        if ( System.properties['os.name'].toLowerCase().contains('windows') ) {
+          new File( System.getenv("HOMEDRIVE")+System.getenv("HOMEPATH") + "\\" +".utTmpDir" ).mkdirs()
+        } else {
+          new File( System.getenv( 'HOME') + "/.utTmpDir" ).mkdirs()
+        } 
+    }
+    
+    ignoreFailures = true
+
+    beforeTest {
+        println "\nRUNNING *** ${it}"
+    }
+
+    afterTest { TestDescriptor, TestResult ->
+        println "${TestResult.resultType} *** test method ${TestDescriptor.getName()}(${TestDescriptor.getClassName()})"
+    }
+    
+    testLogging {
+        // set options for log level LIFECYCLE
+        exceptionFormat "full"
+    }
+
+    useTestNG(){}
+    testClassesDirs = sourceSets.test.output.classesDirs;
+    classpath       = sourceSets.test.runtimeClasspath;
+    options {
+        listeners << 'org.testng.reporters.XMLReporter'
+    }
+    
+    doLast {
+            ant.touch(file:"test.complete")
+    }
+}
+

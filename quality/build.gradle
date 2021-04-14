@@ -1,0 +1,18 @@
+repositories {
+    flatDir {
+        dirs "${rootDir}/lib"
+    }
+}
+
+dependencies {
+    compile     'org.testng:testng:6.9.11'
+    compile     'com.beust:jcommander:1.27'
+    compile     'com.jcraft:jsch:0.1.51'
+    compile     'log4j:log4j:1.2.17'
+    compile     'org.apache.poi:poi:3.12'
+    compile     'org.apache.poi:poi-ooxml:3.12'
+    compile     'org.apache.poi:poi-ooxml-schemas:3.12'
+    compile     'org.apache.xml:xmlbeans:2.6.0'
+    compile     'org.apache.commons:commons-exec:1.2'
+    compile     files ( "${rootDir}/lib/ojdbc6.jar" )
+}

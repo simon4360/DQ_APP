@@ -1,0 +1,86 @@
+#END-TO-END PROCESS
+
+#change UC4_SESSION_ID to unique value, don't change uc4_use_case_id
+
+UC4_SESSION_ID=G8C_1234
+UC4_USE_CASE_ID=ACQUIRE_G32
+
+StartTask.sh -a ${UC4_USE_CASE_ID} -s ${UC4_SESSION_ID} -p g77_src_g32 -m igr_order_request_publish
+StartTask.sh -a ${UC4_USE_CASE_ID} -s ${UC4_SESSION_ID} -p g77_utils   -m run_use_case_derivation
+
+#get use_case_id / session_id from order_request_in
+G77_SESSION_ID=G77_UC21
+G77_USE_CASE_ID=UCT1092a
+
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_order_request_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_order_publish
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_order_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_order_deal_publish
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_order_deal_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_order_deal_calcdata_publish
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_tc_currency_block_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_tc_coverage_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_tc_deal_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_tc_inclusion_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_tc_inclusions_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_tc_exclusions_wrapper
+StartTask.sh -a ${G77_USE_CASE_ID} -s ${G77_SESSION_ID} -p g77_src_g32 -m igr_calc_configuration_wrapper
+
+
+#MONITORING QUERIES
+select * from v_g77_data_pending where session_id = '';
+select * from v_g77_data_all     where staging_table like '%G32%';
+
+#order request extract delta window
+select * from t_run_parameters_config where microflow_name = 'igr_order_request_publish';
+
+#after use case derivation, check for sessions:
+select * from v_g77_data_all     where staging_table = 'T_G32_ORDER_REQUEST_IN';
+
+
+select * from T_G32_ORDER_REQUEST_IN;
+select * from T_IGR_ORDER_REQUEST;
+select * from T_G32_ORDER_IN;
+select * from T_IGR_ORDER;
+select * from T_G32_ORDER_DEAL_IN;
+select * from T_IGR_ORDER_DEAL;
+ls -lart  /opt/aptitude/g77_data_in/G32/ | egrep 'xml$'
+
+
+#cleardown, run as sql script after setting the 'session_id'
+
+---8<---
+VARIABLE session_id VARCHAR2(200);
+
+begin
+:session_id := 'test';
+
+delete from t_run_parameters_config where microflow_name = 'igr_order_request_publish' and aptitude_project = 'g77_src_g32';
+delete from T_G32_ORDER_REQUEST_IN where session_id = :session_id or session_id is null;
+delete from T_IGR_ORDER_REQUEST where session_id = :session_id;
+delete from T_G32_ORDER_DEAL_IN where session_id = :session_id;
+delete from T_IGR_ORDER_DEAL where session_id = :session_id;
+delete from T_G32_ORDER_IN where session_id = :session_id;
+delete from T_IGR_ORDER where session_id = :session_id;
+delete from T_G32_ORDER_STATUS_IN where session_id = :session_id;
+delete from T_IGR_ORDER_STATUS where session_id = :session_id;
+delete from T_G32_CALC_CNFGRTN_IN where session_id = :session_id;
+delete from T_IGR_CALC_DEAL_CONFIG where session_id = :session_id;
+delete from T_G32_TC_COVERAGE_IN where session_id = :session_id;
+delete from T_IGR_TC_COVERAGE where session_id = :session_id;
+delete from T_G32_TC_CURRENCY_BLOCK_IN where session_id = :session_id;
+delete from T_IGR_TC_CURRENCY_BLOCK where session_id = :session_id;
+delete from T_G32_TC_DEAL_IN where session_id = :session_id;
+delete from T_IGR_TC_DEAL where session_id = :session_id;
+delete from T_G32_TC_EXCLUSIONS_IN where session_id = :session_id;
+delete from T_IGR_TC_EXCLUSIONS where session_id = :session_id;
+delete from T_G32_TC_INCLUSIONS_IN where session_id = :session_id;
+delete from T_IGR_TC_INCLUSIONS where session_id = :session_id;
+commit;
+end;
+/
+
+s2ew36@srl000000014:~> sudo su - tecg77d1
+tecg77d1@srl000000014:~> rm -rf /opt/aptitude/g77_data_in/G32/*xml*
+
+---8<---

@@ -1,0 +1,1 @@
+@@t_privs_config_cfg.sql

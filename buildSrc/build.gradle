@@ -1,0 +1,17 @@
+apply plugin: 'groovy'
+
+dependencies {
+    compile gradleApi()
+    compile localGroovy()
+    compile 'com.jcraft:jsch:0.1.51'
+    compile 'commons-dbcp:commons-dbcp:1.2.2'
+    compile 'commons-codec:commons-codec:1.10'
+    compile fileTree ( dir: "$projectDir/lib" , include: 'MAH.jar' )
+    compile 'org.apache.commons:commons-exec:1.2'
+}
+
+repositories {
+    flatDir {
+        dirs "$projectDir/lib"
+    }
+}

@@ -1,0 +1,179 @@
+import com.microgen.buildtools.appsrv.batch.BatchConstants;
+import com.microgen.buildtools.appsrv.SudoCommand;
+
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import org.apache.tools.ant.filters.FixCrLfFilter;
+import org.apache.tools.ant.filters.ReplaceTokens;
+
+final Path   PATH_TO_SRC_OS_SCRIPTS          = Paths.get ( projectDir.toURI() ).resolve ( 'src' ).resolve ( 'main' ).resolve ( 'batch' ).resolve ( 'os' );
+final Path   PATH_TO_BATCH_BUILD_DIR         = Paths.get ( buildDir.toURI() ).resolve ( 'batch' ).resolve ( 'tmp' );
+final Path   PATH_TO_BATCH_SCRIPTS_BUILD_DIR = PATH_TO_BATCH_BUILD_DIR.resolve ( 'scripts' );
+final Path   PATH_TO_BATCH_CACERT_BUILD_DIR  = PATH_TO_BATCH_BUILD_DIR.resolve ( 'cacert' );
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/batch/java'
+        }
+        resources {
+            srcDir 'src/main/batch/java'
+        }
+    }
+}
+
+dependencies {
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'apt-service-caller.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'com.ibm.websphere.appserver.api.constrainedDelegation-1.0.16.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'com.ibm.websphere.appserver.spi.kernel.service-1.4.11.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'com.ibm.websphere.appserver.spi.logging-1.1.26.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'com.ibm.websphere.security-8.5.5.9.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'com.ibm.ws.ejb.thinclient-8.5.5.10.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'commons-codec-1.10.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'commons-lang-2.6.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'commons-logging-1.2.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'httpclient-4.5.3.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'httpcore-4.4.8.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'jdom.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'log4j.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'org.osgi.service.component-1.3.0.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'OSGi_R4_v4.2_core_spec-4.2.0.200908310645.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'servlet-api-2.5.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'slf4j-api-1.7.26.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'slf4j-api-1.7.26-sources.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'sr-http-security-1.0.5.3.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'sr-sje-commons-3.1.2.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'sr-sje-requestinterceptor-3.0.1.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'sr-xa2-client-1.0.18.1.1.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'sr-xa2-commons-1.9.5_api_rc1.jar' )
+    compile fileTree ( dir: "$projectDir/src/main/batch/lib" , include: 'sr-xa2-wsclient-1.9.5_api_rc1.jar' )
+}
+
+jar {
+    baseName = 'batch'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    from "$projectDir/src/main/batch/resources/log4j.properties"
+}
+
+task dropBatchScripts {
+    doLast {
+        SudoCommand.deleteFolder ( envProperties.aptitudeLinuxUsername , Paths.get ( BatchConstants.getPathToScriptsBase ( env ) ) );
+    }
+}
+
+task prepareBatchScripts ( dependsOn: [ clean , jar ] ) {
+    doLast {
+        copy {
+            from    jar.archivePath
+            into    PATH_TO_BATCH_SCRIPTS_BUILD_DIR.toFile()
+        }
+
+        final FileTree SCRIPT_TREE = fileTree ( dir : "$projectDir/src/main/batch/os/" , includes : [ '**/*.sh' , '**/*.tpt' ] );
+        copy {
+            from    SCRIPT_TREE
+            into    PATH_TO_BATCH_SCRIPTS_BUILD_DIR.toFile()
+            filter  ( ReplaceTokens , tokens : [ env : env ] )
+            filter  ( ReplaceTokens, tokens: envProperties )
+            filter  ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+        }
+    }
+}
+
+task deployBatchScripts ( dependsOn: [ prepareBatchScripts, dropBatchScripts ] ) {
+     mustRunAfter {
+        dropBatchScripts
+    }
+    doLast {
+        final String TMP_SCRIPTS_ARCHIVE_NAME    = 'tmp_scripts.zip';
+        final Path   PATH_TO_SCRIPTS_ARCHIVE     = PATH_TO_BATCH_SCRIPTS_BUILD_DIR.parent.resolve ( TMP_SCRIPTS_ARCHIVE_NAME );
+        final String PATH_TO_TMP_SCRIPTS_ARCHIVE = BatchConstants.getPathToScriptsBase ( env ) + TMP_SCRIPTS_ARCHIVE_NAME;
+
+        ant.zip ( destfile: PATH_TO_SCRIPTS_ARCHIVE.toFile() ) {
+            fileset ( dir: PATH_TO_BATCH_SCRIPTS_BUILD_DIR.toFile() )
+        }
+
+        SudoCommand.createFolder ( envProperties.aptitudeLinuxUsername , Paths.get ( BatchConstants.getPathToScriptsBase ( env ) ) );
+
+        SudoCommand.deployFile (   envProperties.aptitudeLinuxUsername
+                               ,   PATH_TO_SCRIPTS_ARCHIVE
+                               ,   BatchConstants.getPathToScriptsBase ( env )
+                               );
+
+        SudoCommand.execute    (   envProperties.aptitudeLinuxUsername
+                               ,   " unzip $PATH_TO_TMP_SCRIPTS_ARCHIVE -d " + BatchConstants.getPathToScriptsBase ( env ) + ' ; '   +
+                                   " rm -rf $PATH_TO_TMP_SCRIPTS_ARCHIVE ; "                                                         +
+                                   ' cd ' + BatchConstants.getPathToScriptsBase ( env ) + ' ; '                                      +
+                                   " find . -type d       -print | xargs chmod 700 ; "                                               +
+                                   " find . -name '*.jar' -print | xargs chmod 400 ; "                                               +
+                                   " find . -name '*.sh'  -print | xargs chmod 500 ; "
+                               );
+    }
+}
+
+task prepareCacertsFile ( dependsOn: [ clean ] ) {
+    doLast {
+        copy {
+            from    jar.archivePath
+            into    PATH_TO_BATCH_CACERT_BUILD_DIR.toFile()
+        }
+
+        final FileTree SCRIPT_TREE = fileTree ( dir : "$projectDir/src/main/batch/resources/uc4cacerts_" + envProperties.UC4_env, includes : [ '**/*.crt' ] );
+        copy {
+            from    SCRIPT_TREE
+            into    PATH_TO_BATCH_CACERT_BUILD_DIR.toFile()
+            filter  ( ReplaceTokens , tokens : [ env : env ] )
+            filter  ( ReplaceTokens, tokens: envProperties )
+            filter  ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+        }
+   }
+}
+
+task deployCacertsFile ( dependsOn: [ prepareCacertsFile ] ) {
+    doLast {
+        final String TMP_CACERT_ARCHIVE_NAME     = 'tmp_cacert.zip';
+        final Path   PATH_TO_CACERT_ARCHIVE      = PATH_TO_BATCH_CACERT_BUILD_DIR.parent.resolve ( TMP_CACERT_ARCHIVE_NAME );
+        final String PATH_TO_TMP_CACERT_ARCHIVE  = BatchConstants.getPathToScriptsBase ( env ) + TMP_CACERT_ARCHIVE_NAME;
+        final String CACERT_KEYSTORE_NAME        = 'uc4cacerts_' + envProperties.UC4_env;
+        final String ROOT_CERT_NAME              = 'SwissReRootCA2.crt';
+        final String SYSTEM_CERT_NAME            = 'SwissReSystemCA22.crt';
+
+        ant.zip ( destfile: PATH_TO_CACERT_ARCHIVE.toFile() ) {
+            fileset ( dir: PATH_TO_BATCH_CACERT_BUILD_DIR.toFile() )
+        }
+
+        SudoCommand.execute    (   envProperties.aptitudeLinuxUsername
+                               ,   ' cd ' + BatchConstants.getPathToScriptsBase ( env ) + ' ; ' +
+                                   " rm -f uc4cacerts_* ;"                                      +
+                                   " rm -f ~/uc4cacerts_* ;" 
+                               );
+
+        SudoCommand.deployFile (   envProperties.aptitudeLinuxUsername
+                               ,   PATH_TO_CACERT_ARCHIVE
+                               ,   BatchConstants.getPathToScriptsBase ( env )
+                               );
+
+        SudoCommand.execute    (   envProperties.aptitudeLinuxUsername
+                               ,   " unzip $PATH_TO_TMP_CACERT_ARCHIVE -d " + BatchConstants.getPathToScriptsBase ( env ) + ' ; '    +
+                                   " rm -rf $PATH_TO_TMP_CACERT_ARCHIVE ; "                                                          +
+                                   ' cd ' + BatchConstants.getPathToScriptsBase ( env ) + ' ; '                                      +
+                                   " find . -name '*.crt' -print | xargs chmod 400 ; "                                               +
+                                   ' mv *.crt /home/' + envProperties.aptitudeLinuxUsername + ' ; '                                  +
+                                   ' keytool -import -noprompt -trustcacerts -alias ' + ROOT_CERT_NAME                + ' -file ~/' + ROOT_CERT_NAME                + ' -storepass changeit -keystore ~/' + CACERT_KEYSTORE_NAME +';' +
+                                   ' keytool -import -noprompt -trustcacerts -alias ' + SYSTEM_CERT_NAME              + ' -file ~/' + SYSTEM_CERT_NAME              + ' -storepass changeit -keystore ~/' + CACERT_KEYSTORE_NAME +';' +
+                                   ' keytool -import -noprompt -trustcacerts -alias ' + envProperties.certificateName + ' -file ~/' + envProperties.certificateName + ' -storepass changeit -keystore ~/' + CACERT_KEYSTORE_NAME +';' +
+                                   ' cd /home/' + envProperties.aptitudeLinuxUsername + ' ; ' +
+                                   " find . -name '" + CACERT_KEYSTORE_NAME + "' -print | xargs chmod 400 ; "                        +
+                                   " rm -f ~/*.crt ; "
+                               );
+    }
+    
+task deployUC4Integration ( dependsOn: [ deployBatchScripts, deployCacertsFile ] ) {
+       description = formatTaskDescription ( 
+                    "Deploy objects to allow interaction with UC4 application." 
+                       , "" 
+                       , "None.")
+    }
+}

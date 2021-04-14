@@ -1,0 +1,77 @@
+apply from: 'db.gradle'
+apply from: 'aptitude.gradle'
+apply from: 'unitTest.gradle'
+apply from: 'batch.gradle'
+
+gradle.taskGraph.whenReady {
+    graph -> if ( graph.hasTask ( rebuildG77 ) ||  graph.hasTask ( upgradeG77 )  ) {
+                 ext.brdFileSet = 'all';
+                 ext.startAptitudeProjects = 'yes';
+             }
+}
+
+task deploymentSuccessful (dependsOn : [ ':gateway:registerG77Install', ':appsrv:apwideVersionUpdate', ':appsrv:apwideStatusUp' ]) {
+          doLast {
+                  ant.touch(file:"build.complete")
+           }
+}
+
+task patchG77AptitudeProject (dependsOn : [ ':appsrv:apwideStatusDeploy', ':gateway:deployAptitudeProjects', deploymentSuccessful] ) {
+          deploymentSuccessful.mustRunAfter deployAptitudeProjects
+         mustRunAfter { [':gateway:patchG77UpgradeSqlScript' , ':gateway:patchG77MainSqlScript' ] }
+}
+
+task patchG77UpgradeSqlScript (dependsOn : [ ':appsrv:apwideStatusDeploy', ':gateway:deploySingleUpgradeDbScript', deploymentSuccessful] ) {
+          deploymentSuccessful.mustRunAfter deploySingleUpgradeDbScript
+}
+
+
+task patchG77MainSqlScript (dependsOn : [ ':appsrv:apwideStatusDeploy', ':gateway:deploySingleDbScript', deploymentSuccessful] ) {
+          deploymentSuccessful.mustRunAfter deploySingleDbScript
+}
+
+
+task rebuildG77 ( dependsOn : [ ':appsrv:apwideStatusDeploy' 
+                              , ':appsrv:deleteServer'
+                              , ':appsrv:buildServer'
+                              , ':gateway:uninstallDb'
+                              , ':gateway:uninstallDbForSchemaCompare'
+                              , ':gateway:buildFullDb'
+                              , ':configDataSets:deployConfigDataSetsFull'
+                              , ':gateway:deployAptitudeUtilsProject'
+                              , ':gateway:deployAptitudeProjects'
+                              , ':gateway:deployUC4Integration'
+                              , deploymentSuccessful
+                              ] ) {
+                                 
+                                 deploymentSuccessful.mustRunAfter deployCacertsFile
+                                 
+   description = formatTaskDescription ( 
+                    "Full Re-install of the G77 Application." 
+                       , "remember to -x out either :gateway:uninstallDb or :gateway:uninstallDbForSchemaCompare" +
+                         "./gradlew -Penv=nn rebuildG77 -x :gateway:uninstallDbForSchemaCompare (when rebuilding in CI or Other enviornments)" +
+                         "./gradlew -Penv=nn rebuildG77 -x :gateway:uninstallDb (needed in CI build only) " 
+                       , "None.");
+
+}
+
+task upgradeG77 ( dependsOn : [ ':appsrv:apwideStatusDeploy'
+                              , ':appsrv:deleteServer'
+                              , ':appsrv:buildServer'
+                              , ':gateway:buildUpgradeDb'
+                              , ':configDataSets:deployConfigDataSets'
+                              , ':gateway:deployAptitudeUtilsProject'
+                              , ':gateway:deployAptitudeProjects'
+                              , ':gateway:deployUC4Integration'
+                              , deploymentSuccessful
+                              ] ) {
+                                 
+                                 deploymentSuccessful.mustRunAfter deployCacertsFile
+                                 
+   description = formatTaskDescription ( 
+                    "Upgrade of the G77 Application." 
+                       , "" 
+                       , "None.");
+                       
+}
+

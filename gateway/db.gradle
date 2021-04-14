@@ -1,0 +1,526 @@
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+
+import org.apache.tools.ant.filters.ReplaceTokens;
+import org.apache.tools.ant.util.TeeOutputStream;
+
+final String DATABASE_CODE_TESTING_GROUP     = 'G77 custom db script quality control';
+final String DATABASE_CODE_DEPLOYMENT_GROUP  = 'G77 custom db script deployment';
+
+final Path PATH_TO_RESOURCE_FOLDER = Paths.get ( projectDir.toURI() ).resolve ( 'src' ).resolve ( 'test' ).resolve ( 'resources' ).resolve ( 'testing' ).resolve ( 'reference_data' );
+final Path PATH_TO_DB_SRC_DIR      = Paths.get ( projectDir.toURI() ).resolve ( 'src' ).resolve ( 'main' ).resolve ( 'db' );
+final Path PATH_TO_DB_BUILD_DIR    = Paths.get ( buildDir.toURI() ).resolve ( 'db' );
+final Path PATH_TO_LOG_FOLDER      = Paths.get ( rootDir.toURI() ).resolve ( 'log' ).resolve ( "$project.name" );
+
+dependencies {
+    testCompile project ( ':quality' )
+}
+
+
+task prepareDbScripts ( type: Copy , dependsOn : clean ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "A description."
+
+    onlyIf {
+        Files.exists ( PATH_TO_DB_SRC_DIR )
+    }
+
+    from    PATH_TO_DB_SRC_DIR.toFile()
+    into    PATH_TO_DB_BUILD_DIR.toFile()
+    filter  ( ReplaceTokens , tokens : [ connG77    : "set termout off \n" + "conn " +  envProperties.g77_cfgUsername + "/" + envProperties.g77_cfgPassword + "@" + envProperties.oracleServiceName + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ connG77TEC : "set termout off \n" + "conn " +  envProperties.g77_cfgUsername + "/" + envProperties.g77_cfgPassword + "@" + envProperties.oracleServiceName + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ connG77ARC : "set termout off \n" + "conn " +  envProperties.g77_cfg_arcUsername + "/" + envProperties.g77_cfg_arcPassword + "@" + envProperties.oracleServiceName + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ connG79    : "set termout off \n" + "conn " +  envProperties.g79Username + "/" + envProperties.g79Password + "@" + envProperties.g79ConnectString + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ env : env ] )
+    filter  ( ReplaceTokens , tokens : envProperties )
+    include '**/*.sql'
+}
+
+task testDbScriptQuality ( type : Test , dependsOn : [ cleanTest , prepareDbScripts ] ) {
+    group       = DATABASE_CODE_TESTING_GROUP;
+    description = "Verify code quality against project standards."
+    
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) )
+    }
+
+    systemProperties 'test.codeRoot'                 : prepareDbScripts.destinationDir.path
+    systemProperties 'test.oracleHost'               : envProperties.oracleHost
+    systemProperties 'test.oracleServiceName'        : envProperties.oracleServiceName        
+    systemProperties 'test.g77_cfgUsername'          : envProperties.g77_cfgUsername
+    systemProperties 'test.g77_cfgPassword'          : envProperties.g77_cfgPassword
+    systemProperties 'test.g77_cfg_arcUsername'      : envProperties.g77_cfg_arcUsername
+    systemProperties 'test.g77_cfg_arcPassword'      : envProperties.g77_cfg_arcPassword
+    include 'com/microgen/quality/db/code/TestDbQualityOracle*'
+    exclude 'com/microgen/quality/db/deployment/**'
+}
+
+task deployFullDbScripts ( dependsOn: [ prepareDbScripts , testDbScriptQuality ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Install site-specific db customisations by running the full_install.sql."
+
+    onlyIf {        
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) );
+        ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus' 
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'full_install.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'full_install.err' ) , StandardOpenOption.CREATE )
+        }   
+    }
+}
+
+task deployUpgradeDbScripts ( dependsOn: [ prepareDbScripts , testDbScriptQuality ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Install site-specific db customisations by running the upgrade_install.sql."
+    
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) )
+    }
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus' 
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'upgrade_install.sql' ) )
+            standardOutput = new org.apache.tools.ant.util.TeeOutputStream( Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.log' ) , StandardOpenOption.CREATE ), System.out )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'upgrade_install.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task registerG77Install ( dependsOn: [ prepareDbScripts ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Register version upgrade by running the register_install_version.sql."
+    
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) )
+    }
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus' 
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'register_install_version.sql' ) )
+            standardOutput = new org.apache.tools.ant.util.TeeOutputStream( Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'register_install_version.log' ) , StandardOpenOption.CREATE ), System.out )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'register_install_version.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task registerG77DatabaseInstall ( dependsOn: [ prepareDbScripts ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Register Database version upgrade by running the register_install_db_history.sql."
+    
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) )
+    }
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus' 
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'register_install_db_history.sql' ) )
+            standardOutput = new org.apache.tools.ant.util.TeeOutputStream( Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'register_install_db_history.log' ) , StandardOpenOption.CREATE ), System.out )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'register_install_db_history.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task deployRefreshDbObjects ( dependsOn: [ prepareDbScripts , testDbScriptQuality ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Install site-specific db customisations by running the refresh_objects.sql."
+    
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) )
+    }
+
+    
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus' 
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( Paths.get ( workingDir.toURI() ).resolve ( 'refresh_objects.sql' ) )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'refresh_objects.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER.resolve ( 'refresh_objects.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task testDbScriptDeployment ( type : Test , dependsOn : [ cleanTest , prepareDbScripts ] ) {
+    group       = DATABASE_CODE_TESTING_GROUP;
+    description = "Test that all custom objects exist in the target database after install."
+
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) )
+    }
+    mustRunAfter {
+        deployFullDbScripts
+        deployUpgradeDbScripts
+    }
+
+    systemProperties 'test.codeRoot'                 : prepareDbScripts.destinationDir.path
+    systemProperties 'test.oracleHost'               : envProperties.oracleHost
+    systemProperties 'test.oracleServiceName'        : envProperties.oracleServiceName
+    systemProperties 'test.oracleJdbcUrl'            : envProperties.oracleJdbcUrl
+    systemProperties 'test.g77_cfgUsername'          : envProperties.g77_cfgUsername
+    systemProperties 'test.g77_cfgPassword'          : envProperties.g77_cfgPassword
+    systemProperties 'test.g77_cfg_arcUsername'      : envProperties.g77_cfg_arcUsername
+    systemProperties 'test.g77_cfg_arcPassword'      : envProperties.g77_cfg_arcPassword
+    exclude 'com/microgen/quality/db/code/**'
+    include 'com/microgen/quality/db/deployment/TestSchemaCodeDeploymentOracle*'
+}
+
+task uninstallDb ( dependsOn: [ prepareDbScripts , testDbScriptQuality ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Remove Site-specific db customisations by running the uninstall.sql.\nThis command will not work on higher environments."
+
+    final Path PATH_TO_UNINSTALL_SQL = Paths.get ( prepareDbScripts.destinationDir.toURI() ).resolve ( 'uninstall.sql' );
+    
+    if (!project.hasProperty("fullBuild")) {
+      ext.fullBuild = "no"
+    }    
+    
+    onlyIf {
+        Files.exists ( PATH_TO_UNINSTALL_SQL );
+       ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    doLast {
+        final Path PATH_TO_UNINSTALL_DB_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_UNINSTALL_DB_LOG_FOLDER );
+
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( PATH_TO_UNINSTALL_SQL )
+            standardOutput = Files.newOutputStream ( PATH_TO_UNINSTALL_DB_LOG_FOLDER.resolve ( 'uninstall.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_UNINSTALL_DB_LOG_FOLDER.resolve ( 'uninstall.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task uninstallDbForSchemaCompare ( dependsOn: [ prepareDbScripts , testDbScriptQuality ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Remove Site-specific db customisations by running the uninstall.sql.\nThis command will not work on higher environments."
+
+    final Path PATH_TO_SCHEMA_COMP_UNINSTALL_SQL = Paths.get ( prepareDbScripts.destinationDir.toURI() ).resolve ( 'schema_comp_uninstall.sql' );
+    
+    if (!project.hasProperty("fullBuild")) {
+      ext.fullBuild = "no"
+    }    
+    
+    onlyIf {
+        Files.exists ( PATH_TO_SCHEMA_COMP_UNINSTALL_SQL );
+       ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    doLast {
+        final Path PATH_TO_UNINSTALL_DB_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_UNINSTALL_DB_LOG_FOLDER );
+
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( PATH_TO_SCHEMA_COMP_UNINSTALL_SQL )
+            standardOutput = Files.newOutputStream ( PATH_TO_UNINSTALL_DB_LOG_FOLDER.resolve ( 'schema_comp_uninstall.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_UNINSTALL_DB_LOG_FOLDER.resolve ( 'schema_comp_uninstall.err' ) , StandardOpenOption.CREATE )
+        }
+    }
+}
+
+task cleardownDb ( dependsOn: [ prepareDbScripts , testDbScriptQuality ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Remove test data created by batch runs by executing the cleardown.sql script.\nThis command will not work on higher environments."
+
+    final Path PATH_TO_CLEARDOWN_SQL = Paths.get ( prepareDbScripts.destinationDir.toURI() ).resolve ( 'cleardown.sql' );
+    
+    if (!project.hasProperty("fullBuild")) {
+      ext.fullBuild = "no"
+    }    
+    
+    onlyIf {
+        Files.exists ( PATH_TO_CLEARDOWN_SQL );
+       ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    doLast {
+        final Path PATH_TO_CLEARDOWN_DB_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_CLEARDOWN_DB_LOG_FOLDER );
+
+        exec {
+            workingDir     = prepareDbScripts.destinationDir
+            executable     = 'sqlplus'
+            args           = [ '/nolog' ]
+            standardInput  = Files.newInputStream  ( PATH_TO_CLEARDOWN_SQL )
+            standardOutput = Files.newOutputStream ( PATH_TO_CLEARDOWN_DB_LOG_FOLDER.resolve ( 'cleardown.log' ) , StandardOpenOption.CREATE )
+            errorOutput    = Files.newOutputStream ( PATH_TO_CLEARDOWN_DB_LOG_FOLDER.resolve ( 'cleardown.err' ) , StandardOpenOption.CREATE )
+        }           
+    }
+}
+
+task prepareSingleDbScript ( dependsOn: clean ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "\n"                                                                                                                                                                          +
+                  "Description        : Create an environment specific version of a single '.sql' script\n"                                                                                     +
+                  "                   : Notes (1) This task requires that a parameter 'sqlpath' be supplied.\n"                                                                                 +
+                  "\n"                                                                                                                                                                          +
+                  "Pre-conditions     : None.\n"                                                                                                                                                +
+                  "Sample invocations : (1) gradle -Penv=$env -PdeployToPrimaryEnv=Y -PdeployToHAServer=N :aah:corfah:prepareSingleDbScript        -Psqlpath=fdr/procedures/x.sql\n"   +
+                  "                   : (2) gradle -Penv=$env -PdeployToPrimaryEnv=Y -PdeployToHAServer=N :aah:aahCoreFixes:prepareSingleDbScript  -Psqlpath=fdr/procedures/y.sql\n"   +
+                  "                   : (3) gradle -Penv=$env -PdeployToPrimaryEnv=Y -PdeployToHAServer=N :mah:map_custom:prepareSingleDbScript    -Psqlpath=fdr/procedures/z.sql\n"   +
+                  "Output / log files : An environment specific version of the nominated .sql file is created in this location: $PATH_TO_DB_BUILD_DIR"
+                  ;
+
+    onlyIf {
+        project.hasProperty ( 'sqlpath' )
+    }
+
+    doLast {
+        final Path PATH_TO_DB_SCRIPT = PATH_TO_DB_SRC_DIR.resolve ( sqlpath );
+        assert ( Files.exists ( PATH_TO_DB_SCRIPT ) );
+
+        copy {
+            from    PATH_TO_DB_SCRIPT.toFile()
+            into    PATH_TO_DB_BUILD_DIR.toFile()
+            filter  ( ReplaceTokens , tokens : [ env : env ] )
+            filter  ( ReplaceTokens , tokens : envProperties )
+        }
+    }
+}
+
+task deploySingleDbScript ( dependsOn: [ clean , prepareSingleDbScript ] ) {
+    onlyIf {
+        project.hasProperty ( 'sqlpath' )
+    }
+
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "\n"                                                                                                              +
+                  "Description        : Deploy an environment specific version of a single '.sql' script to the $env environment."  +
+                  "\n"                                                                                                              +
+                  "Pre-conditions     : (1) BTEQ must be on the path of the computer that this task is being executed from.\n"      +
+                  "Output / log files : The output from the BTEQ command line tool is printed to the command prompt."
+                  ;
+
+    doLast {
+        final Path PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE = PATH_TO_LOG_FOLDER.resolve ( "$sqlpath" + ".log" );
+        Files.createDirectories ( PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE.parent );
+
+        final Path PATH_TO_DB_SCRIPT = PATH_TO_DB_SRC_DIR.resolve ( sqlpath );
+        assert ( Files.exists ( PATH_TO_DB_SCRIPT ) );
+        final Path REL_PATH_TO_DB_SCRIPT = PATH_TO_DB_SRC_DIR.relativize ( PATH_TO_DB_SCRIPT );
+
+        println " ";
+        println "Original script; detokenized script; log file: ";
+        println PATH_TO_DB_SCRIPT.toString();
+        println PATH_TO_DB_BUILD_DIR.resolve(REL_PATH_TO_DB_SCRIPT);
+        println PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE;
+        println "";
+
+        String DB_USERNAME_KEY = "";
+        String DB_USERNAME     = "";
+        String DB_PASSWORD_KEY = "";
+        String DB_PASSWORD     = "";
+        
+        DB_USERNAME_KEY = REL_PATH_TO_DB_SCRIPT.getName ( 0 ).toString() + 'Username';
+        DB_PASSWORD_KEY = REL_PATH_TO_DB_SCRIPT.getName ( 0 ).toString() + 'Password';
+
+        DB_USERNAME     = envProperties."$DB_USERNAME_KEY";
+        DB_PASSWORD     = envProperties."$DB_PASSWORD_KEY";
+       
+        final String OBJECTTYPE    = ( REL_PATH_TO_DB_SCRIPT.getName ( 0 ).toString() )
+        final String NODEFINE      = ( 'set define off \n' )
+        final String WHATEVER      = ( 'whenever sqlerror exit failure\n' )
+        final String BLANKLINES    = ( 'set sqlblanklines on\n' )
+            
+        def sqlstring
+        switch (OBJECTTYPE) {
+            case 'tables':
+                sqlstring = WHATEVER + '@' + PATH_TO_DB_SCRIPT.fileName + ' ' + DB_USERNAME + '_data\nexit SQL.SQLCODE'
+                break
+            case 'indices':
+                sqlstring = WHATEVER + '@' + PATH_TO_DB_SCRIPT.fileName + ' ' + DB_USERNAME + '_data_idx\nexit SQL.SQLCODE'
+                break
+            case 'procedures':
+                final String RAISEANYERROR =    "\n show error;"                                                                     + "\n" +
+                        "declare"                                                                                                    + "\n" +
+                        "  l_num_errors integer;"                                                                                    + "\n" +
+                        "begin"                                                                                                      + "\n" +
+                        "select count(*)"                                                                                            + "\n" +
+                        "  into l_num_errors"                                                                                        + "\n" +
+                        "  from user_errors"                                                                                         + "\n" +
+                        " where lower(name) = '" + PATH_TO_DB_SCRIPT.fileName.toString().replaceAll('.sql','') + "';"                + "\n" +
+                        " if( l_num_errors > 0 ) "                                                                                   + "\n" +
+                        " then "                                                                                                     + "\n" +
+                        " execute immediate 'DROP PROCEDURE " + PATH_TO_DB_SCRIPT.fileName.toString().replaceAll('.sql','') + "';"   + "\n" +
+                        " raise_application_error( -20001, 'Errors in " + PATH_TO_DB_SCRIPT.fileName + "' ); "                       + "\n" +
+                        " end if; "                                                                                                  + "\n" +
+                        "end; "                                                                                                      + "\n" +
+                        "/ "                                                                                                         + "\n" 
+                sqlstring = NODEFINE + WHATEVER + BLANKLINES +  '@' + PATH_TO_DB_SCRIPT.fileName + RAISEANYERROR
+                break
+            default:
+                sqlstring = NODEFINE + WHATEVER + BLANKLINES + '@' + PATH_TO_DB_SCRIPT.fileName 
+                break
+            }
+            
+        exec {
+            workingDir     = PATH_TO_DB_BUILD_DIR.toFile()
+            executable     = 'sqlplus'
+            args           = [ "$DB_USERNAME/$DB_PASSWORD@$envProperties.oracleServiceName" ]
+            standardInput  = new StringBufferInputStream  ( " $sqlstring" )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE , StandardOpenOption.CREATE )
+        }        
+         
+    }
+}
+
+
+task deploySingleUpgradeDbScript ( dependsOn: [ clean , prepareDbScripts] ) {
+    onlyIf {
+        project.hasProperty ( 'sqlpath' )
+    }
+
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "\n"                                                                                                              +
+                  "Description        : Deploy an environment specific version of a single upgrade '.sql' script to the $env environment."  +
+                  "\n"                                                                                                              +
+                  "Pre-conditions     : (1) sqlplus must be on the path of the computer that this task is being executed from.\n"      +
+                  "Output / log files : The output from the BTEQ command line tool is printed to the command prompt."
+                  ;
+
+    doLast {
+        final Path PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE = PATH_TO_LOG_FOLDER.resolve ( "$sqlpath" + ".log" );
+        Files.createDirectories ( PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE.parent );
+
+        final Path PATH_TO_DB_SCRIPT = PATH_TO_DB_SRC_DIR.resolve ( sqlpath );
+        assert ( Files.exists ( PATH_TO_DB_SCRIPT ) );
+        final Path REL_PATH_TO_DB_SCRIPT = PATH_TO_DB_SRC_DIR.relativize ( PATH_TO_DB_SCRIPT );
+
+        println " ";
+        println "Original script; detokenized script; log file: ";
+        println PATH_TO_DB_SCRIPT.toString();
+        println PATH_TO_DB_BUILD_DIR.resolve(REL_PATH_TO_DB_SCRIPT);
+        println PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE;
+        println "";     
+       
+        final String OBJECTTYPE    = ( REL_PATH_TO_DB_SCRIPT.getName ( 0 ).toString() )
+        final String NODEFINE      = ( 'set define off \n' )
+        final String WHATEVER      = ( 'whenever sqlerror exit failure\n' )
+        final String BLANKLINES    = ( 'set sqlblanklines on\n' )
+            
+        def sqlstring
+        switch (OBJECTTYPE) {
+            case 'upgrade':
+                sqlstring = NODEFINE + WHATEVER + BLANKLINES + '@' + REL_PATH_TO_DB_SCRIPT
+                break
+            default:
+                sqlstring = NODEFINE + WHATEVER + BLANKLINES + '@' + REL_PATH_TO_DB_SCRIPT 
+                break
+            }
+            
+        exec {
+            workingDir     = PATH_TO_DB_BUILD_DIR.toFile()
+            executable     = 'sqlplus'
+            args           = [ "/nolog" ]
+            standardInput  = new StringBufferInputStream  ( " $sqlstring" )
+            standardOutput = Files.newOutputStream ( PATH_TO_DEPLOY_SINGLE_DB_SCRIPT_LOG_FILE , StandardOpenOption.CREATE )
+        }        
+         
+    }
+}
+
+task buildFullDb ( dependsOn: [ deployFullDbScripts , testDbScriptDeployment ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "\n"                                                                                                                                       +
+                  "Description        : Prepare, test the quality of, deploy & test the deployment of all the custom database code to the $env environment." +
+                  "\n"                                                                                                                                       +
+                  "Pre-conditions     : (1) The custom database code which will be deployed by invoking this task must not exist in the $env environment\n"  +
+                  "Output / log files : N/A."
+                  ;
+
+    registerG77DatabaseInstall.mustRunAfter testDbScriptDeployment
+  
+    onlyIf {
+       ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    mustRunAfter {
+      [ ':gateway:uninstallDb' , ':gateway:uninstallDbForSchemaCompare' ]
+    }
+}
+
+task buildUpgradeDb ( dependsOn: [ deployUpgradeDbScripts , testDbScriptDeployment, registerG77DatabaseInstall ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "\n"                                                                                                                                       +
+                  "Description        : Prepare, test the quality of, deploy & test the deployment of all the custom database code to the $env environment." +
+                  "\n"                                                                                                                                       +
+                  "Pre-conditions     : (1) The custom database code which will be deployed by invoking this task must not exist in the $env environment\n"  +
+                  "Output / log files : N/A."
+                  ;
+    registerG77DatabaseInstall.mustRunAfter testDbScriptDeployment
+}
+
+task prepareGeneralMappingsFile ( type: Copy , dependsOn : clean ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "A description."
+
+    onlyIf {
+        Files.exists ( PATH_TO_RESOURCE_FOLDER )
+    }
+
+    from    PATH_TO_RESOURCE_FOLDER.toFile()
+    into    PATH_TO_DB_BUILD_DIR.toFile()
+    filter  ( ReplaceTokens , tokens : [ connG77    : "set termout off \n" + "conn " +  envProperties.g77_cfgUsername + "/" + envProperties.g77_cfgPassword + "@" + envProperties.oracleServiceName + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ connG77TEC : "set termout off \n" + "conn " +  envProperties.g77_cfgUsername + "/" + envProperties.g77_cfgPassword + "@" + envProperties.oracleServiceName + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ connG77ARC : "set termout off \n" + "conn " +  envProperties.g77_cfg_arcUsername + "/" + envProperties.g77_cfg_arcPassword + "@" + envProperties.oracleServiceName + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ connG79    : "set termout off \n" + "conn " +  envProperties.g79Username + "/" + envProperties.g79Password + "@" + envProperties.g79ConnectString + "\n" +"set termout on\n"] )
+    filter  ( ReplaceTokens , tokens : [ env : env ] )
+    filter  ( ReplaceTokens , tokens : envProperties )
+    include '**/*.dsv'
+}
+
+task deployTestGeneralMappings ( dependsOn: [ clean, prepareGeneralMappingsFile ] ) {
+    group       = DATABASE_CODE_DEPLOYMENT_GROUP;
+    description = "Install test version of general mappings by running test_general_mappings.dsv."
+
+    onlyIf {
+        Files.exists ( Paths.get ( prepareDbScripts.destinationDir.toURI() ) );
+        ( ! ( env in [ 'uat' , 'prod' ] )) || ( env in [ 'uat' ] && fullBuild == 'yes' );
+    }
+
+    doLast {
+        final Path PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER = PATH_TO_LOG_FOLDER.resolve ( "$name" );
+        Files.createDirectories ( PATH_TO_DEPLOY_DB_SCRIPTS_LOG_FOLDER );
+        exec {
+            workingDir     = prepareDbScripts.destinationDir 
+            executable     = 'sqlldr'
+            args           = [ 'userid=' + envProperties.g77_cfgUsername + '/' + envProperties.g77_cfgPassword + '@' + envProperties.oracleServiceName + ' control=/home/' + envProperties.deployerUsername + '/current/gateway/src/test/resources/testing/reference_data/test_general_mappings.ctl direct=true' ]
+        }
+    }
+}
+

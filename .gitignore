@@ -1,0 +1,12 @@
+.gradle
+appsrv/build
+buildSrc/.gradle
+buildSrc/build
+configDataSets/build
+quality/build
+log/
+*.iml
+quality/src/.idea/
+gateway/src/main/aptitude/g77/*.bat
+/tools/unitTestGenerator/output
+gateway/src/main/db/upgrade/00_install.sql.orig

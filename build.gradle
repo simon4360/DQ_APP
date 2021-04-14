@@ -1,0 +1,376 @@
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Properties;
+import com.microgen.buildtools.util.PropertiesUtil;
+import com.microgen.buildtools.util.EncryptionUtil;
+
+apply plugin: 'java'
+
+final String HUB_PACKAGING_GROUP = '* G77 source code packaging';
+final String HUB_DEV_GROUP = '* G77 development';
+
+validateBuildParameters   ();
+captureEnvProperties      ();
+validateEnvPropertiesFile ();
+compareEnvPropertiesFiles ();
+printBuildTargetInfo      ();
+
+final Path PATH_TO_ENV             = Paths.get ( "${rootDir}" ).resolve("environments");
+final Path PATH_TO_ENV_PROP_FILE   =  PATH_TO_ENV.resolve ( "${env}.properties" );
+final Path PATH_TO_ENV_PWDTMP_FILE =  PATH_TO_ENV.resolve ( "${env}.passwords" );
+
+def formatTaskDescription (String desc, String preCond, String outputs) {
+   def taskDescriptionFormatted =  "\n"                                                                     +
+                                   "Description    : " + desc.replaceAll('\n','\n               : ') +
+                                   "\n"                                                                     +
+                                   "Pre-conditions : " + preCond.replaceAll('\n','\n               : ') +
+                                   "\n"                                                                     +
+                                   "Output / logs  : " + outputs.replaceAll('\n','\n               : ') +
+                                   "\n";
+
+    return (taskDescriptionFormatted)
+}
+
+def validateBuildParameters () {
+    if ( ! project.hasProperty ( 'env' ) ) {
+        throw new Exception ( "The mandatory parameter 'env' has not been supplied." );
+    }
+}
+
+def captureEnvProperties () {
+    ext.env                 = new String ( "$env" );
+    Properties buildProps   = new Properties ();
+
+    buildProps.putAll ( PropertiesUtil.getProperties ( Paths.get ( "${rootDir}" ).resolve("environments").resolve ( "${env}.properties" ) ) );
+    buildProps.putAll ( PropertiesUtil.getProperties ( Paths.get ( "${rootDir}" ).resolve ( "version.properties" ) ) );
+        
+    buildProps.put ( "versionTo", buildProps.getProperty ( new String ( "gatewayBuildNumber" ) ) );
+           
+    if (buildProps.getProperty ("versionTo").length() == 0 ) {
+      buildProps.put ( "versionTo", "NA" );
+    }
+    
+    if  ( project.hasProperty ( 'apwidePassword' ) ) {
+       buildProps.setProperty ( 'apwidePassword' , "$apwidePassword" );
+       } 
+    
+    String  encryptionPwd   = buildProps.getProperty ( new String ( "encryptionPassword" ) );
+    
+    if  ( project.hasProperty ( 'encryptionPassword' ) ) {
+       encryptionPwd = "$encryptionPassword";
+       } else if ( buildProps.getProperty ( new String ( "encryptionPassword" )).length() != 0  )  {
+         encryptionPwd =  buildProps.getProperty ( new String ( "encryptionPassword" )); 
+    }
+
+    if ( encryptionPwd.length() == 0 ) {
+         throw new Exception ( "Please define encryptionPassword parameter in either ${rootDir}/version.properties or as parameter to gradle task -PencryptionPassword=NNNNN" );
+    }
+    
+    buildProps.setProperty ( new String ( "encryptionPassword" ), encryptionPwd );
+
+    Set<String> buildPropsPropertyNames = buildProps.stringPropertyNames().sort();
+    
+    buildPropsPropertyNames.each {
+                       buildPropsPropertyName -> if ( buildProps.getProperty ( buildPropsPropertyName ).indexOf ( 'encrypted:' ) >= 0   ) {   
+                          try {                                       
+                          buildProps.setProperty ( buildPropsPropertyName 
+                                                  , EncryptionUtil.getDecryptedPassword ( buildProps.getProperty ( buildPropsPropertyName ).substring ( 10 ) , encryptionPwd ) );
+                          }
+                          catch ( Exception e ) {
+                          throw new Exception ( "Unable to decrypt passwords. Check the encryptionPassword" );
+                          }
+                       }
+    }
+    
+    ext.envProperties       = buildProps;
+}
+
+def validateEnvPropertiesFile () {
+    if ( envProperties.oracleHost.toLowerCase().trim() == 'mapgrp' ) {
+        if ( env != 'prod' ) {
+            throw new Exception ( "Only 'prod' deployments can target '" + envProperties.oracleHost.toLowerCase().trim() + "'" );
+        }
+    }
+}
+    
+def compareEnvPropertiesFiles () {
+    boolean isPass = true;
+ 
+    FileCollection envPropsA = files { file('./environments').listFiles() }
+    FileCollection envPropsB = files { file('./environments').listFiles() }
+    
+        envPropsA.each {
+               File fileA -> if ( fileA.name.toLowerCase().endsWith(".properties") ) {
+                   Properties propsA = PropertiesUtil.getProperties ( Paths.get ( "$fileA" ) );
+                                  
+                   envPropsB.each {
+                       File fileB -> if ( fileB.name.toLowerCase().endsWith(".properties") ) {
+                           Properties propsB = PropertiesUtil.getProperties ( Paths.get ( "$fileB" ) );
+                           
+                           Set<String> propsAPropertyNames = propsA.stringPropertyNames();
+                           Set<String> propsBPropertyNames = propsB.stringPropertyNames();
+                       
+                           if ( propsAPropertyNames.sort() != propsBPropertyNames.sort() ) { isPass = false }
+                       
+                           propsAPropertyNames.intersect(propsBPropertyNames).each{propsAPropertyNames.remove(it);propsBPropertyNames.remove(it)}
+                           
+                           propsAPropertyNames.each { println fileA.name + " contains the property " + it + " - " +  fileB.name + " does not." }
+                       }
+                   }
+              }
+         }
+        
+    if ( ! isPass ) {
+        throw new Exception ( "There are inconsistencies between the environment definition (.properties) files. Review the report above & fix the inconsistencies." );
+    }
+}
+
+def validateDatabasePasswords () {
+    def passwords  = [ envProperties.mahadminPassword , envProperties.fdrPassword , envProperties.guiPassword , envProperties.rdrPassword , envProperties.slaPassword , envProperties.slrPassword , envProperties.stnPassword ]
+    boolean isPass = true;
+
+    passwords.each {
+        boolean meetsLengthRequirements = ( it.length () >= 5 );
+        boolean containsCharacters      = false;
+        boolean containsNumbers         = false;
+
+        for ( char c : it.toCharArray () ) {
+             containsCharacters = containsCharacters || c.isLetter  ();
+             containsNumbers    = containsNumbers    || "$c".isInteger ();
+        }
+
+        if ( ! meetsLengthRequirements ) {
+            println "The password '${it}' is shorter than the minimum permitted length (8 characters)"
+            isPass = false;
+        }
+
+        if ( ! containsCharacters ) {
+            println "The password '${it}' does not contain any letters - add some letters to it"
+            isPass = false;
+        }
+
+        if ( ! containsNumbers ) {
+            println "The password '${it}' does not contain any numbers - add some numbers to it"
+            isPass = false;
+        }
+    }
+
+    if ( ! isPass ) {
+        throw new Exception ( "One or more passwords contravene the database password standards." );
+    }    
+}
+def printBuildTargetInfo () {
+    println '*********************************************************************************************************'
+    println "* This build targets the '$env' environment"
+    println '*********************************************************************************************************'
+    println ''
+    println '*********************************************************************************************************'
+    println "* The target oracle server is                      : $ext.envProperties.oracleServiceName"  
+    println "* The target aptitude server instance is hosted at : $ext.envProperties.aptitudeHost:$ext.envProperties.aptitudeServerPort"
+    println "* The version of code is                           : $ext.envProperties.versionTo"
+    if ( ! (env in [ 'uat', 'sit', 'prod' ]  ) ) {
+    println "* Unit test data available in                      : $ext.envProperties.versionTo/gateway/testing/src/main/resources"
+        }
+    println '*********************************************************************************************************'
+}
+
+buildscript {
+    repositories {
+        flatDir {
+            name 'libs'
+            dirs "$rootDir/lib"
+        }
+    }
+
+    dependencies {
+        classpath 'org.gradle.api.plugins:gradle-cargo-plugin:0.6.1'
+    }
+}
+
+task packageSourceCode ( type: Tar , dependsOn: [ clean ] ) {
+    final Path PATH_TO_PACKAGED_FILE = Paths.get ( buildDir.toURI() ).resolve ( 'hub_src.zip' );
+
+    group       = HUB_PACKAGING_GROUP;
+    
+    description = formatTaskDescription ( 
+                         "Package the HUB source code. The packaged code is to be delivered to the deployment team."
+                       , "None."
+                       , "$PATH_TO_PACKAGED_FILE");
+    
+    from             rootDir
+    exclude          '.gradle'
+    exclude          'build'
+    destinationDir = PATH_TO_PACKAGED_FILE.parent.toFile()
+    archiveName    = PATH_TO_PACKAGED_FILE.fileName
+    compression    = Compression.GZIP
+
+    doLast {
+        println "The HUB source code has been packaged into the file $PATH_TO_PACKAGED_FILE"
+    }
+}
+
+task encryptPasswords ( ) {
+  group       = HUB_DEV_GROUP;
+    
+  description = formatTaskDescription ( 
+                                       "Encrypt plaintext passwords stored in ${env}.properties." 
+                                     , "Parameter name must include text 'Password'"
+                                     , "$PATH_TO_ENV_PROP_FILE"
+                                     );
+
+  doLast {      
+    Properties buildProps   = new Properties ();
+    Path       propsFile    = Paths.get ( "${rootDir}" ).resolve("environments").resolve ( "${env}.properties" ) ;
+        
+    buildProps.putAll ( PropertiesUtil.getProperties ( propsFile ) );
+
+        
+    Set<String> buildPropsPropertyNames = envProperties.stringPropertyNames();
+    
+    buildPropsPropertyNames.each {
+      Passwords -> if ( Passwords.indexOf ('Password') >=0  && ! ( Passwords.equals ( 'encryptionPassword' ) ) ) {
+        if ( buildProps.getProperty ( Passwords ).length() > 10 && buildProps.getProperty ( Passwords ).substring(0 , 10).equals ( "encrypted:" )  ) 
+        {
+          println "The password parameter ${Passwords} is already encrypted";
+        } else 
+        {
+          println "Updating ${env}.properties variable: "    + Passwords + "=encrypted:" + EncryptionUtil.getEncryptedPassword ( buildProps.getProperty ( Passwords ) , envProperties.encryptionPassword );
+          PropertiesUtil.setProperty ( propsFile, Passwords, buildProps.getProperty ( Passwords ), "encrypted:" + EncryptionUtil.getEncryptedPassword ( buildProps.getProperty ( Passwords ) , envProperties.encryptionPassword ) ); 
+        }           
+      }
+    }  
+  }
+}
+
+task encryptSinglePassword () {
+  group       = HUB_DEV_GROUP;
+
+  description = formatTaskDescription (
+                         "Encrypt string 'password' (using  a master 'encryptionPassword') and store as a password 'property'. \n" + 
+                         "sample invocations: \n" +
+                         "gradle -Penv=prod encryptSinglePassword -Pproperty=aptitudeProjectControllerPassword -Ppassword=examplePassword -PencryptionPassword=[envMasterPassword] \n" +
+                         "gradle -Penv=${env} encryptSinglePassword -Pproperty=aptitudeProjectController -Ppassword=examplePassword " 
+                       , "Encryption password must match the key used to encrypt other passwords in the ${env}.properties"
+                       , "Encrypted passwords are written to environments/${env}.properties"
+                       );
+
+  doFirst {
+    if ( ! project.hasProperty ( 'password' ) || ! project.hasProperty ( 'property' )  ) {
+      throw new Exception ( "For this task, provide the mandatory parameters 'property' and 'password' as input. encryptionPassword is mandatory for prod env changes: \n"
+                          + "\tgradle -Penv=prod encryptSinglePassword -Pproperty=MYSCHEMA -Ppassword=MYSECRET -PencryptionPassword=NNNNN." );
+    }
+  }
+
+  doLast {
+    Properties buildProps   = new Properties ();
+    Path       propsFile    = Paths.get ( "${rootDir}" ).resolve("environments").resolve ( "${env}.properties" ) ;       
+    
+    String  encPwd = envProperties.encryptionPassword;
+    String  plainPwd = "$password";
+    String  property = "$property";
+
+    buildProps.putAll ( PropertiesUtil.getProperties ( propsFile ) );
+    
+    if ( property.indexOf ('Password') < 0 ) { 
+      property = property + "Password"
+    }  
+
+    println "Updating ${env}.properties variable: "    + property + "=encrypted:" + EncryptionUtil.getEncryptedPassword (  plainPwd, encPwd );
+    PropertiesUtil.setProperty ( propsFile, property, buildProps.getProperty ( property ), "encrypted:" + EncryptionUtil.getEncryptedPassword ( plainPwd, encPwd ) );
+
+  }
+}
+
+task enableGradleDaemon ( ) {
+    final Path PATH_TO_GRADLE_PROPERTIES = Paths.get ( System.properties['user.home'] ).resolve('.gradle');
+    final Path PATH_TO_GRADLE_PROPT_FILE = PATH_TO_GRADLE_PROPERTIES.resolve('gradle.properties');    
+
+    group       = HUB_DEV_GROUP;
+    
+    description = formatTaskDescription ( 
+                         "Enable gradle daemon for subsequent runs."
+                       , "None."
+                       , "$PATH_TO_GRADLE_PROPT_FILE");
+    
+       doLast {
+                    
+        copy {
+            from    rootDir
+            into    PATH_TO_GRADLE_PROPERTIES.toFile()
+            include 'gradle.properties'
+        }
+        ant.replace (
+                file    : PATH_TO_GRADLE_PROPT_FILE.toFile()
+            ,   token   : "false"
+            ,   value   : "true"
+            );
+        }
+
+    doLast {
+        println "Gradle daemon is set to 'true' in $PATH_TO_GRADLE_PROPT_FILE"
+        println "To stop running daemons, issue command: gradle --stop "
+        println "To disable further daemon invocations: gradle -Penv=[your env] disableGradleDaemon "
+    }
+}
+
+task disableGradleDaemon ( ) {
+    final Path PATH_TO_GRADLE_PROPERTIES = Paths.get ( System.properties['user.home'] ).resolve('.gradle');
+    final Path PATH_TO_GRADLE_PROPT_FILE = PATH_TO_GRADLE_PROPERTIES.resolve('gradle.properties');
+
+    group       = HUB_DEV_GROUP;
+    
+    description = formatTaskDescription ( 
+                         "Disable gradle daemon for subsequent runs. \nNOTE: Any running daemons are not automatically stopped."
+                       , "None."
+                       , "$PATH_TO_GRADLE_PROPT_FILE");
+    
+       doLast {
+                    
+        copy {
+            from    rootDir
+            into    PATH_TO_GRADLE_PROPERTIES.toFile()
+            include 'gradle.properties'
+        }
+        ant.replace (
+                file    : PATH_TO_GRADLE_PROPT_FILE.toFile()
+            ,   token   : "true"
+            ,   value   : "false"
+            );
+        
+        }
+
+    doLast {
+        println "Gradle daemon is set to 'false' in $PATH_TO_GRADLE_PROPT_FILE"
+        println "To stop running daemons, issue command: gradle --stop "
+        println "To enable gradle daemon: gradle -Penv=[] enableGradleDaemon "
+    }
+}
+
+gradle.taskGraph.whenReady {
+    graph -> if ( graph.hasTask ( ":gateway:deployDbInit" ) ) {
+                 validateDatabasePasswords ();
+             }
+}
+
+allprojects {
+    apply plugin: 'java'
+
+    repositories {
+        flatDir {
+            name 'libs'
+            dirs "$rootDir/lib"
+        }
+    }
+
+    dependencies {
+        compile         'commons-io:commons-io:2.4'
+        compile         'org.apache.commons:commons-lang3:3.1'
+        compile         'junit:junit:4.11'
+        compile         'org.apache.commons:commons-csv:1.7'
+        testCompile     'junit:junit:4.11'
+        testCompile     'org.hamcrest:hamcrest-core:1.3'
+        testCompile     files ( "${rootDir}/lib/ojdbc6.jar" )
+        
+    }
+
+}

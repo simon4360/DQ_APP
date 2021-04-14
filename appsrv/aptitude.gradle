@@ -1,0 +1,1182 @@
+import com.microgen.buildtools.appsrv.SudoCommand;
+import com.microgen.buildtools.appsrv.ShellCommand;
+import com.microgen.buildtools.appsrv.aptitude.AptitudeServerConstants;
+import com.microgen.buildtools.appsrv.aptitude.AptitudeServerController;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+import org.apache.tools.ant.filters.ReplaceTokens;
+import org.apache.tools.ant.filters.FixCrLfFilter;
+
+final String APTITUDE_SERVER_BUILD_GROUP   = '* G77 CorFinGateway Aptitude server build';
+final String APTITUDE_SERVER_CONTROL_GROUP = '* G77 CorFinGateway Aptitude server control';
+
+final String APTITUDE_SERVER_TYPE_DEVELOPMENT = 'development';
+final String APTITUDE_SERVER_TYPE_TESTING     = 'testing';
+final String APTITUDE_SERVER_TYPE_PRODUCTION  = 'production';
+
+final Path PATH_TO_APTITUDE_SRC_FOLDER    = Paths.get ( "$projectDir" ).resolve ( 'src' ).resolve ( 'aptitude' );
+final Path PATH_TO_BASHRC_FILE            = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( '.bashrc' );
+final Path PATH_TO_ODBCINI_FILE           = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'odbc' ).resolve ( '.odbc.ini' );
+final Path PATH_TO_SRVINI_FOLDER          = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'ini' );
+final Path PATH_TO_SCRIPTS_FOLDER         = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'scripts' );
+final Path PATH_TO_DATA_FOLDER            = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'data' );
+final Path PATH_TO_G24_TEMPLATES_FOLDER   = PATH_TO_DATA_FOLDER.resolve ( 'g24' ).resolve ( 'templates' );
+final Path PATH_TO_LICENCE_FILE           = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'licences' ).resolve ( envProperties.aptitudeHost + '.apl' );
+final Path PATH_TO_CONFIG_DEFS_FOLDER     = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'config_definitions' );
+final Path PATH_TO_DB_CONFIG_DEFS_FOLDER  = PATH_TO_CONFIG_DEFS_FOLDER.resolve  ( 'db' );
+final Path PATH_TO_EX_CONFIG_DEFS_FOLDER  = PATH_TO_CONFIG_DEFS_FOLDER.resolve  ( 'exec' );
+final Path PATH_TO_INTERNAL_DB_FOLDER     = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'internal_db' );
+final Path PATH_TO_INTERNAL_DB_FILE       = PATH_TO_INTERNAL_DB_FOLDER.resolve  ( 'srv_exp.' + envProperties.aptitudeHost + '.xml' );
+final Path PATH_TO_FILEBEAT_FILE          = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'filebeat' ).resolve ( 'filebeat.yml' );
+final Path PATH_TO_KEYTAB_FILE            = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'keytab' ).resolve ( envProperties.aptitudeLinuxUsername + '.keytab' );
+final Path PATH_TO_APWIDE_SCRIPTS_FOLDER  = PATH_TO_APTITUDE_SRC_FOLDER.resolve ( 'apwide' );
+
+
+assert ( Files.exists ( PATH_TO_APTITUDE_SRC_FOLDER )     && Files.isDirectory   ( PATH_TO_APTITUDE_SRC_FOLDER ) );
+assert ( Files.exists ( PATH_TO_BASHRC_FILE )             && Files.isRegularFile ( PATH_TO_BASHRC_FILE ) );
+assert ( Files.exists ( PATH_TO_ODBCINI_FILE )            && Files.isRegularFile ( PATH_TO_ODBCINI_FILE ) );
+assert ( Files.exists ( PATH_TO_SRVINI_FOLDER )           && Files.isDirectory   ( PATH_TO_SRVINI_FOLDER ) );
+assert ( Files.exists ( PATH_TO_SCRIPTS_FOLDER )          && Files.isDirectory   ( PATH_TO_SCRIPTS_FOLDER ) );
+assert ( Files.exists ( PATH_TO_LICENCE_FILE )            && Files.isRegularFile ( PATH_TO_LICENCE_FILE ) );
+assert ( Files.exists ( PATH_TO_CONFIG_DEFS_FOLDER )      && Files.isDirectory   ( PATH_TO_CONFIG_DEFS_FOLDER ) );
+assert ( Files.exists ( PATH_TO_DB_CONFIG_DEFS_FOLDER )   && Files.isDirectory   ( PATH_TO_DB_CONFIG_DEFS_FOLDER ) );
+assert ( Files.exists ( PATH_TO_EX_CONFIG_DEFS_FOLDER )   && Files.isDirectory   ( PATH_TO_EX_CONFIG_DEFS_FOLDER ) );
+assert ( Files.exists ( PATH_TO_INTERNAL_DB_FOLDER )      && Files.isDirectory   ( PATH_TO_INTERNAL_DB_FOLDER ) );
+assert ( Files.exists ( PATH_TO_INTERNAL_DB_FILE )        && Files.isRegularFile ( PATH_TO_INTERNAL_DB_FILE ) );
+assert ( Files.exists ( PATH_TO_FILEBEAT_FILE )           && Files.isRegularFile ( PATH_TO_FILEBEAT_FILE ) );
+assert ( Files.exists ( PATH_TO_KEYTAB_FILE )             && Files.isRegularFile ( PATH_TO_KEYTAB_FILE ) );
+assert ( Files.exists ( PATH_TO_G24_TEMPLATES_FOLDER )    && Files.isDirectory   ( PATH_TO_G24_TEMPLATES_FOLDER ) );
+assert ( Files.exists ( PATH_TO_APWIDE_SCRIPTS_FOLDER )   && Files.isDirectory   ( PATH_TO_APWIDE_SCRIPTS_FOLDER ) );
+ 
+
+assert ( envProperties.aptitudeServerType in [ APTITUDE_SERVER_TYPE_DEVELOPMENT , APTITUDE_SERVER_TYPE_TESTING , APTITUDE_SERVER_TYPE_PRODUCTION ] );
+
+SudoCommand.setUsernames (envProperties.deployerUsername,envProperties.aptitudeLinuxUsername);
+
+task startAptitude {
+    group       = APTITUDE_SERVER_CONTROL_GROUP
+    description = "\n"                                                                                      +
+                  "Description        : Start the Aptitude Server installed at "                            +
+                                        envProperties.aptitudeHost                                          +
+                                        "@"                                                                 +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )   +
+                  "\n"                                                                                      +
+                  "Pre-conditions     : (1) The Aptitude Server must be in a 'stopped' state. \n"           +
+                  "Output / log files : See: files at following location\n"                                 +
+                  "                   : " + envProperties.aptitudeHost + "@" + AptitudeServerConstants.getPathToLogDir ( env )
+                  ;
+
+    mustRunAfter {
+        [ ':appsrv:createAptitudeServerInstance' , ':appsrv:deployBashRc' , ':appsrv:deployOdbcIni' , ':appsrv:deployAptitudeIni' , ':appsrv:deployScripts' , ':appsrv:deployLicence' , ':appsrv:deployInternalDb' ]
+    }
+    doLast {
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl start g77_aptsrv.service' );
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl start g77_apteng.service' );
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl start g77_aptbus.service' );
+        
+        
+        tasks.checkAptitude.execute();              
+       
+    }
+}
+
+task stopAptitude {
+    group       = APTITUDE_SERVER_CONTROL_GROUP;
+    description = "\n"                                                                                      +
+                  "Description        : Stop the Aptitude Server installed at "                             +
+                                        envProperties.aptitudeHost                                          +
+                                        "@"                                                                 +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )   +
+                  "\n"                                                                                      +
+                  "Pre-conditions     : (1) The Aptitude Server must be in a 'started' state. \n"           +
+                  "Output / log files : None"
+                  ;
+
+    doLast {
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl stop g77_aptbus.service' );
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl stop g77_apteng.service' );
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl stop g77_aptsrv.service' );
+        
+        final String killProjectsCmd = 'pkill -9 -u ' + envProperties.aptitudeLinuxUsername + ' aptexe || true;'
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , killProjectsCmd );        
+    }
+}
+
+task checkAptitude {
+    group       = APTITUDE_SERVER_CONTROL_GROUP;
+    description = "\n"                                                                                      +
+                  "Description        : Check the status of the Aptitude Server installed at "              +
+                                        envProperties.aptitudeHost                                          +
+                                        "@"                                                                 +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )   +
+                  "\n"                                                                                      +
+                  "Pre-conditions     : None\n"                                                             +
+                  "Output / log files : Details of the 'aptsrv', 'apteng' and 'aptbus' OS processes will be printed on screen."
+                  ;
+
+    doLast {
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl status g77_aptbus.service' );
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl status g77_apteng.service' );
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl status g77_aptsrv.service' );
+    }
+}
+
+task startFileBeat {
+    group       = APTITUDE_SERVER_CONTROL_GROUP
+    description = "\n"                                                                                      +
+                  "Description        : Start the Filebeat service installed at "                            +
+                                        envProperties.aptitudeHost                                          +
+                                        "@"                                                                 +
+                                        AptitudeServerConstants.getPathToFileBeatInstance ( envProperties.apmID )  +
+                  "\n"                                                                                      +
+                  "Pre-conditions     : None. \n"           +
+                  "Output / log files : None."
+                  ;
+
+    mustRunAfter {
+        [ ':appsrv:createAptitudeServerInstance' , ':appsrv:deployBashRc' , ':appsrv:deployOdbcIni' , ':appsrv:deployAptitudeIni' , ':appsrv:deployScripts' , ':appsrv:deployLicence' , ':appsrv:deployInternalDb', ':appsrv:deployFileBeatConfig' ]
+    }
+    doLast {
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl start g77_filebeat.service' );
+        
+        tasks.checkFileBeat.execute();
+    }
+}
+
+task stopFileBeat {
+    group       = APTITUDE_SERVER_CONTROL_GROUP;
+    description = "\n"                                                                                      +
+                  "Description        : Stop the Aptitude Server installed at "                             +
+                                        envProperties.aptitudeHost                                          +
+                                        "@"                                                                 +
+                                       AptitudeServerConstants.getPathToFileBeatInstance ( envProperties.apmID )    +
+                  "\n"                                                                                      +
+                  "Pre-conditions     : None. \n"           +
+                  "Output / log files : None"
+                  ;
+
+    doLast {
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl stop g77_filebeat.service' );
+    }
+}
+
+task checkFileBeat {
+    group       = APTITUDE_SERVER_CONTROL_GROUP;
+    description = "\n"                                                                                      +
+                  "Description        : Check the status of the Filebeat logging installed at "              +
+                                        envProperties.aptitudeHost                                          +
+                                        "@"                                                                 +
+                                        AptitudeServerConstants.getPathToFileBeatInstance ( envProperties.apmID )    +
+                  "\n"                                                                                      +
+                  "Pre-conditions     : None\n"                                                             +
+                  "Output / log files : Details of the 'aptsrv', 'apteng' and 'aptbus' OS processes will be printed on screen."
+                  ;
+
+    doLast {
+        ShellCommand.aptitudeServiceAction ( envProperties.deployerUsername , envProperties.aptitudeHost, 'sudo systemctl status g77_filebeat.service' );
+    }
+}
+
+
+
+task backupAptitude {
+    group       = APTITUDE_SERVER_CONTROL_GROUP;
+    description = "\n"                                                                                                  +
+                  "Description        : Backup the repository of the Aptitude Server installed at "                     +
+                                        envProperties.aptitudeHost                                                      +
+                                        "@"                                                                             +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )               +
+                  "\n"                                                                                                  +
+                  "Pre-conditions     : None\n"                                                                         +
+                  "Output / log files : A folder whose name is based on the current timestamp will be created at: "     +
+                                        envProperties.aptitudeHost                                                      +
+                                        "@"                                                                             +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )   + "bkp"     +
+                  "\n"                                                                                                  +
+                  "                   : This folder will contain a backup of the repository."
+                  ;
+
+    doLast {
+        final String command = AptitudeServerConstants.getPathToScripts ( env ) + 'backupRepo.sh'
+
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , command );
+        tasks.startAptitude.execute();
+    }
+}
+
+task createAptitudeServerInstance {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n"                                                                                                  +
+                  "Description        : Create instance specific aptitude runtime server directories in     \n"         +
+                  "                   : " + envProperties.aptitudeHost                                                  +
+                                        "@"                                                                             +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )      + ". \n" +
+                  "                   : Link the instance to the Aptitude server binaries residing in             \n"   +
+                  "                   : " + envProperties.aptitudeHost                                                  +
+                                        "@"                                                                             +
+                                        AptitudeServerConstants.getPathToBaseCopy ()                                    +
+                                        ". \n"                                                                        +
+                  "\n"                                                                                                  +
+                  "Pre-requisites     : (1) An uncustomised copy of the Aptitude Server must be located at "   +
+                                        envProperties.aptitudeHost                                                      +
+                                        "@"                                                                             +
+                                        AptitudeServerConstants.getPathToBaseCopy ()                                    +
+                                        "\n"                                                                            +
+                  "                   : (2) This copy of the Aptitude Server must be in a 'stopped' state."    +
+                  "\n"                                                                                                  +
+                  "Output / log files : None "
+                  ;
+
+    doLast {
+
+        final String createInstanceCommand = ' mkdir -p ' + AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )                + ';' +
+                                             ' ln -s    ' + AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) + ' aptitude ' + ';' +
+                                             ' cd aptitude '                                                                                 + ';' +       
+                                             ' ln -s    ' + AptitudeServerConstants.getPathToBaseCopy ( envProperties.aptitudeVersion ) + 'bin bin '                       + ';' +
+                                             ' ln -s    ' + AptitudeServerConstants.getPathToBaseCopy ( envProperties.aptitudeVersion ) + 'lib lib '                       + ';' +
+                                             ' ln -s    ' + AptitudeServerConstants.getPathToBaseCopy ( envProperties.aptitudeVersion ) + 'libexec libexec '               + ';' +   
+                                             ' ln -s    ' + AptitudeServerConstants.getPathToBaseCopy ( envProperties.aptitudeVersion ) + 'share share '                   + ';' +
+                                             ' rm -f    ' + envProperties.apmID                                                              + ';' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToBackupEngine ( )                                + ';' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToBackupServer ( )                                + ';' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToDbDir ( )                                       + ';' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToDbDir ( )   + 'engine;' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToDbDir ( )   + 'server;' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToDbDir ( )   + 'bus;' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToDbDir ( )   + 'server_sqlite;' +
+
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToIni ( )                                         + ';' +                                        
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToLockDir ( )                                     + ';' +                             
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToLogDir ( )                                      + ';' + 
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToRecordingDir ( )                                + ';' +
+                                             ' mkdir -p ' + AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) + 'odbc;' 
+                                             ;
+        
+        final String setPermissionsCommand = 'chmod 770 ' + AptitudeServerConstants.getPathToApmId ( envProperties.apmID );
+        final String setGroupPermission    = 'chmod 750 ' + AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) + ' ' + AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) + 'log';
+        final String createVersionFileCommand  = 'echo "' + envProperties.aptitudeVersion + '" > ' + AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) + '/aptitude.version';
+
+        SudoCommand.execute ( envProperties.deployerUsername , setPermissionsCommand);
+                
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , createInstanceCommand );
+
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , createVersionFileCommand );
+                
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , setGroupPermission );
+        
+    }
+}
+
+task prepareBashRc ( type: Copy , dependsOn: clean ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Prepare the .bashrc file for the the '$env' HUB environment \n"             +
+                  "Pre-requisites     : None"                                                                       +
+                  "\n"                                                                                              +
+                  "Output / log files : A copy of the file '$PATH_TO_BASHRC_FILE' \n"                               +
+                  "                   : customised for the $env environment \n"                                     +
+                  "                   : will be created at '$buildDir'"
+
+    from   PATH_TO_BASHRC_FILE.toFile()
+    into   buildDir
+    filter ( ReplaceTokens       , tokens : [ pathToInstance : AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) ] )
+    filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+}
+
+task deployBashRc ( dependsOn: prepareBashRc ) {
+    final Path PATH_TO_PREPARED_BASHRC_FILE = Paths.get ( prepareBashRc.destinationDir.toURI() ).resolve ( PATH_TO_BASHRC_FILE.getFileName() );
+
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the file $PATH_TO_PREPARED_BASHRC_FILE to \n"                    +
+                  "                   : " + envProperties.aptitudeLinuxUsername + "'s HOME directory "          +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        createAptitudeServerInstance
+    }
+    doLast {
+        SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , PATH_TO_PREPARED_BASHRC_FILE , '$HOME' );
+        SudoCommand.execute    ( envProperties.aptitudeLinuxUsername , 'chmod 700 $HOME/.bashrc' );
+    }
+}
+
+task deployKeyTabFile ( ) {
+    final Path PATH_TO_PREPARED_BASHRC_FILE = Paths.get ( prepareBashRc.destinationDir.toURI() ).resolve ( PATH_TO_BASHRC_FILE.getFileName() );
+
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the file $PATH_TO_KEYTAB_FILE to \n"                    +
+                  "                   : " + envProperties.aptitudeLinuxUsername + "'s .ssh directory "          +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        createAptitudeServerInstance
+    }
+    doLast {
+        SudoCommand.execute    ( envProperties.aptitudeLinuxUsername , "mkdir -p ~/.ssh/" );
+        SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , PATH_TO_KEYTAB_FILE , '~/.ssh/.' );
+        SudoCommand.execute    ( envProperties.aptitudeLinuxUsername , "chmod 600 ~/.ssh/" + envProperties.aptitudeLinuxUsername + '.keytab' );
+    }
+}
+
+task prepareFileBeatConfig ( type: Copy , dependsOn: clean ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Prepare the filebeat.yml file for the '$env' Gateway environment \n"           +
+                  "Pre-requisites     : None"                                                                       +
+                  "\n"                                                                                              +
+                  "Output / log files : A copy of the file '$PATH_TO_FILEBEAT_FILE' \n"                              +
+                  "                   : customised for the $env environment \n"                                     +
+                  "                   : will be created at '$buildDir'"
+
+    from   PATH_TO_FILEBEAT_FILE.toFile()
+    into   buildDir
+    filter ( ReplaceTokens       , tokens : envProperties )
+    filter ( ReplaceTokens       , tokens : [ env : env ] )
+    filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+}
+
+task deployFileBeatConfig ( dependsOn: prepareFileBeatConfig ) {
+    final Path PATH_TO_PREPARED_FILEBEAT_FILE = Paths.get ( prepareFileBeatConfig.destinationDir.toURI() ).resolve ( PATH_TO_FILEBEAT_FILE.getFileName() );
+
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the file $PATH_TO_PREPARED_FILEBEAT_FILE to \n"                   +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToFileBeatInstance ( envProperties.apmID )      +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+    doLast {
+        SudoCommand.deployFile ( envProperties.deployerUsername , PATH_TO_PREPARED_FILEBEAT_FILE , AptitudeServerConstants.getPathToFileBeatInstance ( envProperties.apmID ) + 'filebeat.yml'  );
+        SudoCommand.execute    ( envProperties.deployerUsername , 'chmod u-x ' + AptitudeServerConstants.getPathToFileBeatInstance ( envProperties.apmID ) + 'filebeat.yml' );
+    }
+}
+
+task prepareOdbcIni ( type: Copy , dependsOn: clean ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Prepare the .odbc.ini file for the the '$env' HUB environment \n"           +
+                  "Pre-requisites     : None"                                                                       +
+                  "\n"                                                                                              +
+                  "Output / log files : A copy of the file '$PATH_TO_ODBCINI_FILE' \n"                              +
+                  "                   : customised for the $env environment \n"                                     +
+                  "                   : will be created at '$buildDir'"
+
+    from   PATH_TO_ODBCINI_FILE.toFile()
+    into   buildDir
+    filter ( ReplaceTokens       , tokens : envProperties )
+    filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+}
+
+task deployOdbcIni ( dependsOn: prepareOdbcIni ) {
+    final Path PATH_TO_PREPARED_ODBCINI_FILE = Paths.get ( prepareOdbcIni.destinationDir.toURI() ).resolve ( PATH_TO_ODBCINI_FILE.getFileName() );
+
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the file $PATH_TO_PREPARED_ODBCINI_FILE to \n"                   +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )       +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , PATH_TO_PREPARED_ODBCINI_FILE , AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) + 'odbc'  );
+    }
+}
+
+task prepareAptitudeIni ( type: Copy , dependsOn : clean ) {
+    final Path PATH_TO_TARGET_INI_FOLDER = Paths.get ( buildDir.toURI() ).resolve ( PATH_TO_SRVINI_FOLDER.getFileName() );
+
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Prepare each file in the folder : \n"                                                       +
+                  "                   : $PATH_TO_SRVINI_FOLDER for the Aptitude Server supporting the $env environment."            +
+                  "\n"                                                                                                              +
+                  "Pre-requisites     : None"                                                                                       +
+                  "\n"                                                                                                              +
+                  "Output / log files : Customised files will be created at '$PATH_TO_TARGET_INI_FOLDER'"
+                  ;
+    
+    from PATH_TO_SRVINI_FOLDER.toFile()
+    into PATH_TO_TARGET_INI_FOLDER.toFile()
+    include '*.ini' , '*.pem'
+    filter ( ReplaceTokens       , tokens : envProperties )
+    filter ( ReplaceTokens       , tokens : [ pathToInstance             : AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) ] )
+    filter ( ReplaceTokens       , tokens : [ aptitudeServerEnginePort   : ( envProperties.aptitudeServerPort.toInteger() + 1 ).toString() ] )
+    filter ( ReplaceTokens       , tokens : [ aptitudeLogPort            : ( envProperties.aptitudeServerPort.toInteger() + 2 ).toString() ] )
+    filter ( ReplaceTokens       , tokens : [ aptitudeEngineExecutorPort : ( envProperties.aptitudeServerPort.toInteger() + 3 ).toString() ] )
+    filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+    
+}
+
+task deployAptitudeIni ( dependsOn : prepareAptitudeIni ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the files at $prepareAptitudeIni.destinationDir to \n"           +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToIni ( env )                            +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        prepareAptitudeIni.destinationDir.listFiles().each {
+            SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , Paths.get ( it.toURI() ) , AptitudeServerConstants.getPathToIni ( env ) );
+        }
+    }
+}
+
+task prepareScripts ( type: Copy , dependsOn: clean ) {
+    final Path PATH_TO_TARGET_SCRIPTS_FOLDER = Paths.get ( buildDir.toURI() ).resolve ( PATH_TO_SCRIPTS_FOLDER.getFileName() );
+
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Prepare each file within the folder : \n"                                                       +
+                  "                   : $PATH_TO_SCRIPTS_FOLDER for the Aptitude Server supporting the $env environment.\n"             +
+                  "                   : Each script can be used to control an instance of the Aptitude Server (start, stop)\n"          +
+                  "\n"                                                                                                                  +
+                  "Pre-requisites     : None"                                                                                           +
+                  "\n"                                                                                                                  +
+                  "Output / log files : Customised files will be created at '$PATH_TO_TARGET_SCRIPTS_FOLDER'"
+                  ;
+
+    from PATH_TO_SCRIPTS_FOLDER.toFile()
+    into PATH_TO_TARGET_SCRIPTS_FOLDER.toFile()
+    filter ( ReplaceTokens       , tokens : [ pathToInstance : AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername ) ] )
+    filter ( ReplaceTokens       , tokens : [ pathToScripts  : AptitudeServerConstants.getPathToScripts ( env ) ] )
+    filter ( ReplaceTokens       , tokens : envProperties )
+    filter ( ReplaceTokens       , tokens : [ env : env ] )
+    filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+}
+
+task buildTmp ( dependsOn: prepareScripts ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Builds tmp directory at $prepareScripts.destinationDir to \n"               +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToTempUploadDir ( env )                        +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        // Only need to build a folder if it doesn't exist - don't delete anything
+        //
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToTempUploadDir ( env ) )
+                                   );
+
+    }
+}
+
+task buildLog ( dependsOn: prepareScripts ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Builds log directory at $prepareScripts.destinationDir to \n"               +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToLogs ( env )                        +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        // Only need to build a folder if it doesn't exist - don't delete anything
+        //
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToLogs ( env ) )
+                                   );
+                                   
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToLogs ( env ) + 'batch_logs' )
+                                   );          
+    
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToLogs ( env ) + 'script_logs' )
+                                   );
+                                   
+        final String createLogLink = ' rm -f ' + AptitudeServerConstants.getPathToLogs ( env ) + 'aptitude_logs;' + 
+                                     ' ln -s ' + AptitudeServerConstants.getPathToLogDir ( ) + ' ' + AptitudeServerConstants.getPathToLogs ( env ) + 'aptitude_logs;';
+                                                              
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , createLogLink );  
+      
+        final String housekeepBatchLogsCommand = 'find logs/batch_logs -type f -mtime +5 | xargs rm -f ' ;
+
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , housekeepBatchLogsCommand);
+        
+        final String housekeepScriptLogsCommand = 'cd logs/script_logs; rm -f *.log' ;
+
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , housekeepScriptLogsCommand);
+                                   
+        final String setLogPermissionsCommand = 'chmod -R 750 logs' ;
+        
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , setLogPermissionsCommand);
+
+    }
+}
+
+task buildDataDirectory ( dependsOn: prepareScripts ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Builds data directory at $prepareScripts.destinationDir to \n"               +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToData ( envProperties.apmID )           +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        // Only need to build a folder if it doesn't exist - don't delete anything
+
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'ADY' )
+                                   );
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'G61' )
+                                   );                                   
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'Q0T' )
+                                   );
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'G32' )
+                                   );
+                                   
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'G24/out' )
+                                   );                               
+
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'ERS' )
+                                   );
+                                   
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   'chmod 755 ' + AptitudeServerConstants.getPathToData ( envProperties.apmID )
+                            );                                     
+
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   'chmod 2770 ' + AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'ADY' 
+                            );  
+
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   'chown ' + envProperties.aptitudeLinuxUsername + ':' + envProperties.securetransfergroup + ' ' + AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'ADY' 
+                            );                               
+    }
+}
+
+task buildDataArchiveDirectory ( dependsOn: prepareScripts ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Builds data archive directory at $prepareScripts.destinationDir to \n"               +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToData ( envProperties.apmID )           +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        // Only need to build a folder if it doesn't exist - don't delete anything
+        //
+
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'ADY' )
+                                   );
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'G61' )
+                                   );                                   
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'Q0T' )
+                                   );
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'G32' )
+                                   );
+                                   
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'G24/out' )
+                                   );                               
+
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'ERS' )
+                                   );
+                                   
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   'chmod 755 ' + AptitudeServerConstants.getPathToDataArc ( envProperties.apmID )
+                            );                                     
+
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   'chmod 2770 ' + AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'ADY' 
+                            );  
+
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   'chown ' + envProperties.aptitudeLinuxUsername + ':' + envProperties.securetransfergroup + ' ' + AptitudeServerConstants.getPathToDataArc ( envProperties.apmID ) + 'ADY' 
+                            );                               
+    }
+}
+
+task archiveDataFiles ( dependsOn: [ buildDataArchiveDirectory, buildDataDirectory ] ) {
+
+    def now = new Date()
+    def zipFileName = now.format("YYYYMMddHHmmss") +'.zip'
+    
+    def arcPath = AptitudeServerConstants.getPathToDataArc ( envProperties.apmID )
+    def srcPath = AptitudeServerConstants.getPathToData ( envProperties.apmID )
+    
+    doLast {
+    
+       final String housekeepArchivedDataFiles = 'find ' + arcPath + ' -type f -mtime +5 | xargs rm -f ' ;
+  
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername , housekeepArchivedDataFiles);
+    
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'ADY' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'ADY' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'G61' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'G61' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'Q0T' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'Q0T' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'G32' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'G32' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'ERS' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'ERS' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'ERS' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'ERS' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'G24/out' ) + ';' + ' touch null.done; zip -rm ' + Paths.get ( arcPath + 'G24/out' ) + '/' + zipFileName + ' *done* ' );
+       SudoCommand.execute ( envProperties.aptitudeLinuxUsername, ' cd ' + Paths.get ( srcPath + 'G24' ) + ';' + ' touch null.xml ; zip -m ' + Paths.get ( arcPath + 'G24' ) + '/' + zipFileName + ' *xml ' );
+
+   }
+}
+
+task deployTemplates(dependsOn: buildDataDirectory) {
+
+  final Path PATH_TO_G24_TEMPLATES_TARGET = Paths.get( AptitudeServerConstants.getPathToData ( envProperties.apmID ) + 'G24/templates'  )
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+
+    doLast {
+        SudoCommand.deleteFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   PATH_TO_G24_TEMPLATES_TARGET
+                                   );
+
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   PATH_TO_G24_TEMPLATES_TARGET
+                                   );
+
+        PATH_TO_G24_TEMPLATES_FOLDER.toFile().listFiles().findAll { ! it.hidden }.each {
+            SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , Paths.get ( it.toURI() ) , PATH_TO_G24_TEMPLATES_TARGET.toString()  );
+        }
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   ' chmod 700 ' + PATH_TO_G24_TEMPLATES_TARGET.toString() +    ';' +
+                                ' chmod 500 ' + PATH_TO_G24_TEMPLATES_TARGET.toString() + '/* ;'
+                            );
+    }
+}
+
+task deployScripts ( dependsOn: prepareScripts ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the files at $prepareScripts.destinationDir to \n"               +
+                  "                   : " + envProperties.aptitudeHost                                          +
+                                        "@"                                                                     +
+                                        AptitudeServerConstants.getPathToScripts ( env )                        +
+                  "\n"                                                                                          +
+                  "Pre-requisites     : None"                                                                   +
+                  "\n"                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        SudoCommand.deleteFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToScripts ( env ) )
+                                   );
+
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToScripts ( env ) )
+                                   );
+
+        prepareScripts.destinationDir.listFiles().findAll { ! it.hidden }.each {
+            SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , Paths.get ( it.toURI() ) , AptitudeServerConstants.getPathToScripts ( env ) );
+        }
+        
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   ' chmod 700 ' + AptitudeServerConstants.getPathToScripts ( env ) +       ';' +
+                                ' chmod 500 ' + AptitudeServerConstants.getPathToScripts ( env ) + '*' + ';'
+                            );
+    }
+}
+
+task deployLicence {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy the Aptitude Server licence file at $PATH_TO_LICENCE_FILE \n"       +
+                  "                   : to " + envProperties.aptitudeHost                                                   +
+                                        "@"                                                                                 +
+                                        AptitudeServerConstants.getPathToIni ( env )                                        +
+                  "\n"                                                                                                      +
+                  "                   : and rename it to 'aptitude.apl' "                                                   +
+                  "\n"                                                                                                      +
+                  "Pre-requisites     : None"                                                                               +
+                  "\n"                                                                                                      +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        ':appsrv:createAptitudeServerInstance'
+    }
+    doLast {
+        final String PATH_TO_INI = AptitudeServerConstants.getPathToIni ( env );
+        SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , PATH_TO_LICENCE_FILE , AptitudeServerConstants.getPathToIni ( env ) );
+
+        final String command = " mv $PATH_TO_INI/$PATH_TO_LICENCE_FILE.fileName $PATH_TO_INI/aptitude.apl; chmod 400 $PATH_TO_INI/aptitude.apl ;";
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   command
+                            );
+    }
+}
+
+task deployBusServer {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Register a Microgen Aptitude Bus Server listening on port $envProperties.aptitudeBusPort\n"     +
+                  "                   : on the Aptitude Server supporting the $env environment."                               +
+                  "\n"                                                                                                                  +
+                  "Pre-requisites     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state." +
+                  "\n"                                                                                                                  +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        ':appsrv:startAptitude'
+    }
+    doLast {
+        final String BUS_NAME = 'APT_BUS';
+        final String APTITUDE_DEFAULT_BUS_NAME = 'bus';
+        
+
+        AptitudeServerController srv = new AptitudeServerController (   env
+                                                                    ,   envProperties.aptitudeHost
+                                                                    ,   envProperties.aptitudeLinuxUsername
+                                                                    ,   envProperties.aptitudeServerPort.toInteger()
+                                                                    ,   envProperties.aptitudeBusPort.toInteger()
+                                                                    ,   envProperties.aptitudeAdminUsername
+                                                                    ,   envProperties.aptitudeAdminPassword
+                                                                    );
+                                                                    
+        srv.deleteBusServer ( APTITUDE_DEFAULT_BUS_NAME );         
+        srv.deleteBusServer ( BUS_NAME );
+        srv.addBusServer    ( BUS_NAME , envProperties.aptitudeHost );
+    }
+}
+
+task deployConfigurationDefinitions ( dependsOn: clean ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Deploy each of the configuration definition files located at or in subdirectories of:\n"        +
+                  "                   : $PATH_TO_CONFIG_DEFS_FOLDER to the Aptitude Server supporting the $env environment.\n"   +
+                  "                   : Database configuration definition file must be named lower(databasename).config \n"   +
+                  "\n"                                                                                                                  +
+                  "Pre-requisites     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state." +
+                  "\n"                                                                                                                  +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        ':appsrv:startAptitude'
+    }
+    doLast {
+        File                     pathToSrcConfigDefs = new File ( PATH_TO_CONFIG_DEFS_FOLDER.toString() )
+        AptitudeServerController srv                 = new AptitudeServerController (   env
+                                                                                    ,   envProperties.aptitudeHost
+                                                                                    ,   envProperties.aptitudeLinuxUsername
+                                                                                    ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                    ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                    ,   envProperties.aptitudeAdminUsername
+                                                                                    ,   envProperties.aptitudeAdminPassword
+                                                                                    );
+
+        pathToSrcConfigDefs.traverse ( nameFilter: ~/.*\.config$/ ) {
+
+            Path    pathToSrcConfigDef     = Paths.get ( it.toURI() );
+            boolean isGlobalLevelConfigDef = ( pathToSrcConfigDef.nameCount == ( PATH_TO_CONFIG_DEFS_FOLDER.nameCount + 2 ) ? true : false );
+            Path    pathToBuildConfigDir   = Paths.get ( deployConfigurationDefinitions.temporaryDir.toURI() );
+            String  dbPasswordEnvProperty  = pathToSrcConfigDef.fileName.toString().tokenize('.').first().toLowerCase() + 'Password';
+            String  dbPassword             = ''
+            String  pkcs7                  = '';
+            final String[] metaCharacters =  ['\\','^','$','{','}','[',']','(',')','.','*','+','?','|','<','>','-','&'];
+                        
+            if ( isGlobalLevelConfigDef ) {
+                pathToBuildConfigDir = pathToBuildConfigDir.resolve ( pathToSrcConfigDef.parent.fileName.toString() );
+            }
+            else {
+                pathToBuildConfigDir = pathToBuildConfigDir.resolve ( pathToSrcConfigDef.parent.parent.fileName.toString() ).resolve ( pathToSrcConfigDef.parent.fileName.toString() );
+            }
+
+            if ( pathToSrcConfigDef.startsWith ( PATH_TO_DB_CONFIG_DEFS_FOLDER ) ) {
+                dbPassword = envProperties."$dbPasswordEnvProperty";
+                
+                for ( int i = 0 ; i < metaCharacters.length ; i++ ) {
+                     if ( dbPassword != null && dbPassword.contains ( metaCharacters [ i ] ) ) {
+                            dbPassword = dbPassword.replace ( metaCharacters [ i ] , "'\\" + metaCharacters [ i ] + "'" );
+                     }
+                }
+                
+                pkcs7      = srv.pkcs7EncodeString ( dbPassword , Paths.get ( deployConfigurationDefinitions.temporaryDir.toURI() ).resolve ( dbPasswordEnvProperty + '.pkcs7' ) );
+            }
+
+            copy {
+                from   pathToSrcConfigDef.toFile()
+                into   pathToBuildConfigDir.toFile()
+                filter ( ReplaceTokens       , tokens : envProperties )
+                filter ( ReplaceTokens       , tokens : [ pkcs7Envelope : pkcs7 , env : env] )
+                filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+            }
+
+            if ( isGlobalLevelConfigDef ) {
+                srv.deployGlobalLevelConfigDef ( pathToBuildConfigDir.resolve ( pathToSrcConfigDef.fileName.toString() ) );
+            }
+            else {
+                srv.deployFolderLevelConfigDef ( pathToBuildConfigDir.resolve ( pathToSrcConfigDef.fileName.toString() ) , pathToBuildConfigDir.fileName.toString() );
+            }
+        }
+    }
+}
+
+task deleteConfigurationDefinitions {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Delete each of the configuration definitions (represented by files located at or in subdirectories of:\n"   +
+                  "                   : $PATH_TO_CONFIG_DEFS_FOLDER) from the Aptitude Server supporting the $env environment."            +
+                  "\n"                                                                                                                              +
+                  "Pre-requisites     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state."             +
+                  "\n"                                                                                                                              +
+                  "Output / log files : None"
+                  ;
+
+    doLast {
+        File                     pathToSrcConfigDefs = new File ( PATH_TO_CONFIG_DEFS_FOLDER.toString() )
+        AptitudeServerController srv                 = new AptitudeServerController (   env
+                                                                                    ,   envProperties.aptitudeHost
+                                                                                    ,   envProperties.aptitudeLinuxUsername
+                                                                                    ,   envProperties.aptitudeServerPort.toInteger()
+                                                                                    ,   envProperties.aptitudeBusPort.toInteger()
+                                                                                    ,   envProperties.aptitudeAdminUsername
+                                                                                    ,   envProperties.aptitudeAdminPassword
+                                                                                    );
+
+        pathToSrcConfigDefs.traverse ( nameFilter: ~/.*\.config$/ ) {
+            Path    pathToSrcConfigDef     = Paths.get ( it.toURI() );
+            boolean isGlobalLevelConfigDef = ( pathToSrcConfigDef.nameCount == ( PATH_TO_CONFIG_DEFS_FOLDER.nameCount + 2 ) ? true : false );
+            String  configDefName          = pathToSrcConfigDef.fileName.toString().tokenize('.').first();
+
+            if ( isGlobalLevelConfigDef ) {
+                srv.deleteGlobalLevelConfigDef ( configDefName );
+            }
+            else {
+                srv.deleteFolderLevelConfigDef ( pathToSrcConfigDef.parent.fileName.toString() , configDefName )
+            }
+        }
+    }
+}
+
+
+task testDbConfigurationDefinitions ( dependsOn: clean ) {
+
+  group       = "* G77 Quality Control";
+  description = formatTaskDescription ( "Test each of the database configuration definition files located at or in subdirectories of:\n" +
+                                        "$PATH_TO_CONFIG_DEFS_FOLDER supporting the $env environment. \n" +
+                                        "The test validates that each of the environment variables pertaining to the config def have been configured as expected.\n" +
+                                        "Database configuration definition file must be named lower([schema]).config"
+                                      , "[schema]Username environment variable must be configured.\n" +
+                                        "[schema]Password environment variable must be configured (encrypted or unencrypted).\n" +
+                                        "[schema]ConnectString environment variable can be configured (defaults to environment variable oracleServiceName)."
+                                      , "None."
+                                        );
+
+  doLast {
+  
+    File                     pathToSrcConfigDefs = new File ( PATH_TO_CONFIG_DEFS_FOLDER.toString() )
+
+    pathToSrcConfigDefs.traverse ( nameFilter: ~/.*\.config$/ ) {
+    
+      Path    pathToSrcConfigDef     = Paths.get ( it.toURI() );
+      boolean isGlobalLevelConfigDef = ( pathToSrcConfigDef.nameCount == ( PATH_TO_CONFIG_DEFS_FOLDER.nameCount + 2 ) ? true : false );
+      Path    pathToBuildConfigDir   = Paths.get ( deployConfigurationDefinitions.temporaryDir.toURI() );
+      String  dbUsernameEnvProperty  = pathToSrcConfigDef.fileName.toString().tokenize('.').first().toLowerCase() + 'Username';
+      String  dbPasswordEnvProperty  = pathToSrcConfigDef.fileName.toString().tokenize('.').first().toLowerCase() + 'Password';
+      String  dbConnStrnEnvProperty  = pathToSrcConfigDef.fileName.toString().tokenize('.').first().toLowerCase() + 'ConnectString';
+      String  dbConnStrnEnvDefault   = 'oracleServiceName';
+      String  dbUsername             = ''
+      String  dbPassword             = ''
+      String  dbConnectString        = ''
+
+
+      if ( isGlobalLevelConfigDef ) {
+        pathToBuildConfigDir = pathToBuildConfigDir.resolve ( pathToSrcConfigDef.parent.fileName.toString() );
+      }
+      else {
+        pathToBuildConfigDir = pathToBuildConfigDir.resolve ( pathToSrcConfigDef.parent.parent.fileName.toString() ).resolve ( pathToSrcConfigDef.parent.fileName.toString() );
+      }
+
+      if ( pathToSrcConfigDef.startsWith ( PATH_TO_DB_CONFIG_DEFS_FOLDER ) ) {
+        dbUsername = envProperties."$dbUsernameEnvProperty";
+        dbPassword = envProperties."$dbPasswordEnvProperty";
+        dbConnectString = envProperties."$dbConnStrnEnvProperty"  ?: envProperties."$dbConnStrnEnvDefault";
+
+        println "\nTest Connection to " + dbUsername + " using configurations [" + dbUsernameEnvProperty + ":"+ dbUsername + "], [" + dbPasswordEnvProperty  + ":********] and connect String [" + dbConnectString + "]"
+
+        def sqlstring = 'set define off \n' + 'whenever sqlerror exit failure\n' + 'set sqlblanklines on\n' + 'select * from dual;' + 'exit SQL.SQLCODE'
+
+        exec {
+          executable     = 'sqlplus'
+          args           = ["-s", "$dbUsername/$dbPassword@$dbConnectString" ]
+          standardInput  = new StringBufferInputStream  ( " $sqlstring" )
+        }
+      }
+    }
+  }
+}
+
+
+task testSingleDbConfigurationDefinition ( dependsOn: clean ) {
+
+  group       = "* G77 Quality Control";
+  description = formatTaskDescription ( "Test one database connection by providing input parameter -Pschema \n" +
+                                        "The test validates that the environment variables pertaining to the schema have been configured as expected.\n" 
+                                      , "[schema]Username environment variable must be configured.\n" +
+                                        "[schema]Password environment variable must be configured (encrypted or unencrypted).\n" +
+                                        "[schema]ConnectString environment variable can be configured (defaults to environment variable oracleServiceName)."
+                                      , "None."
+                                        );
+
+  
+  onlyIf {
+   project.hasProperty ( 'schema' );
+  }
+  
+  doLast {
+  
+    String  dbUsernameEnvProperty  = schema.toLowerCase() + 'Username';
+    String  dbPasswordEnvProperty  = schema.toLowerCase() + 'Password';
+    String  dbConnStrnEnvProperty  = schema.toLowerCase() + 'ConnectString';
+    String  dbConnStrnEnvDefault   = 'oracleServiceName';
+    String  dbUsername             = envProperties."$dbUsernameEnvProperty";
+    String  dbPassword             = envProperties."$dbPasswordEnvProperty";
+    String  dbConnectString        = envProperties."$dbConnStrnEnvProperty"  ?: envProperties."$dbConnStrnEnvDefault";
+
+    println "\nTest Connection to " + dbUsername + " using configurations [" + dbUsernameEnvProperty + ":"+ dbUsername + "], [" + dbPasswordEnvProperty  + ":********] and connect String [" + dbConnectString + "]"
+
+    def sqlstring = 'set define off \n' + 'whenever sqlerror exit failure\n' + 'set sqlblanklines on\n' + 'select * from dual;' + 'exit SQL.SQLCODE'
+
+    exec {
+      executable     = 'sqlplus'
+      args           = ["-s", "$dbUsername/$dbPassword@$dbConnectString" ]
+      standardInput  = new StringBufferInputStream  ( " $sqlstring" )
+    }
+  }
+}
+
+task deployInternalDb {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Create default Aptitude Server users for the Aptitude Server supporting the $env environment.\n"      +
+                  "                   : Notes (1) This task is only applicable for '$APTITUDE_SERVER_TYPE_PRODUCTION' type Aptitude Servers.\n"        +
+                  "                   :       (2) This task is accomplished by importing the file\n"                                                            +
+                  "                   :           $PATH_TO_INTERNAL_DB_FILE into the Aptitude Server.\n"                                               +
+                  "                   :       (3) By default the passwords for all Aptitude Server users is 'sreM1crogene'."                              +
+                  "\n"                                                                                                                                          +
+                  "Pre-requisites     : The Aptitude Server supporting the $env environment must be in a 'stopped' state."                             +
+                  "\n"                                                                                                                                          +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+        [ ':appsrv:deployAptitudeIni' , ':appsrv:deployLicence' ]
+    }
+
+    doLast {
+        final String PATH_TO_TMP_FOLDER = AptitudeServerConstants.getPathToTempUploadDir ( env );
+        
+        SudoCommand.createFolder   (   envProperties.aptitudeLinuxUsername
+                                   ,   Paths.get ( AptitudeServerConstants.getPathToTempUploadDir ( env ) )
+                                   );
+
+        SudoCommand.deployFile ( envProperties.aptitudeLinuxUsername , PATH_TO_INTERNAL_DB_FILE , PATH_TO_TMP_FOLDER );
+
+        final String command = AptitudeServerConstants.getPathToAptsrv ( env ) + " --import_skip_table_defs --import_export_mode bin --import_tables tables.xml --import $PATH_TO_TMP_FOLDER$PATH_TO_INTERNAL_DB_FILE.fileName"
+println command;
+
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                            ,   command
+                            );
+                            
+        SudoCommand.execute (   envProperties.aptitudeLinuxUsername
+                              , "rm -f $PATH_TO_TMP_FOLDER$PATH_TO_INTERNAL_DB_FILE.fileName" ) 
+    }
+}
+
+task buildServer ( dependsOn: [ createAptitudeServerInstance , deployAptitudeIni , buildLog, buildTmp, buildDataDirectory, buildDataArchiveDirectory,archiveDataFiles, deployTemplates, deployScripts , deployLicence , deployBashRc , deployKeyTabFile,  deployOdbcIni ,  deployInternalDb , startAptitude , deployBusServer , deployConfigurationDefinitions , deployFileBeatConfig , startFileBeat ] ) {
+    group       = APTITUDE_SERVER_BUILD_GROUP
+    description = "\n" +
+                  "Description        : Create a new Aptitude Server to support the $env environment.\n"                    +
+                  "                   : Notes (1) The Aptitude Server port will be $envProperties.aptitudeServerPort\n"     +
+                  "                   :       (2) The Aptitude Server bus port will $envProperties.aptitudeBusPort\n"       +
+                  "\n"                                                                                                      +
+                  "Pre-requisites     : (1) The folder " + envProperties.aptitudeHost + "@"                                 +
+                                        AptitudeServerConstants.getPathToInstance ( envProperties.apmID , envProperties.aptitudeLinuxUsername )                   +
+                  "\n"                                                                                                      +
+                  "                   : (a) must exist\n"                                                                   +
+                  "                   : (b) be owned by the $envProperties.aptitudeLinuxUsername OS user\n"                 +
+                  "                   : (c) be empty"                                                                       +
+                  "\n"                                                                                                      +
+                  "Output / log files : None"
+                  ;
+
+    mustRunAfter {
+      [ ':appsrv:deleteServer' ]
+    }
+    onlyIf {
+        ! ( env in [ 'dev' ] )
+    }
+    doLast {
+      //  println "Aptitude server username: '$envProperties.aptitudeAdminUsername'"
+      //  println "Aptitude server password: '$envProperties.aptitudeAdminPassword'"
+    }
+}
+
+task deleteServer ( dependsOn: [ stopAptitude, stopFileBeat ] ) {
+    group       = APTITUDE_SERVER_CONTROL_GROUP;
+    description = "\n" +
+                  "Description        : Stop and delete the Aptitude Server supporting the $env environment."                  +
+                  "\n"                                                                                                                  +
+                  "Pre-requisites     : (1) The Aptitude Server supporting the $env environment must be in a 'started' state." +
+                  "\n"                                                                                                                  +
+                  "Output / log files : None"
+                  ;
+
+    onlyIf {
+        ! ( env in [ 'dev_repo' ] ) 
+    }
+    doLast {
+        // chmod here because Puppet may have overwritten our privilege to drop g7*/[tec1]
+        final String chmodApm = 'chmod 770 ' + AptitudeServerConstants.getPathToApmId ( envProperties.apmID ) + ';'
+
+        SudoCommand.execute ( envProperties.deployerUsername, chmodApm );
+        
+        final String dropInstanceCommand = ' rm -f  ~/aptitude '   + ';' +
+                                           ' rm -Rf    ' + AptitudeServerConstants.getPathToApmId ( envProperties.apmID ) + '/' + envProperties.aptitudeLinuxUsername + ';'
+                                           ;
+
+        SudoCommand.execute ( envProperties.aptitudeLinuxUsername , dropInstanceCommand );
+
+    }
+}
+
+task prepareApwideScripts ( type: Copy , dependsOn: clean ) {
+
+    final Path PATH_TO_TARGET_APWIDE_SCRIPTS_FOLDER = Paths.get ( buildDir.toURI() ).resolve ( PATH_TO_APWIDE_SCRIPTS_FOLDER.getFileName() );
+    
+    from PATH_TO_APWIDE_SCRIPTS_FOLDER.toFile()
+    into PATH_TO_TARGET_APWIDE_SCRIPTS_FOLDER.toFile()
+    filter ( ReplaceTokens       , tokens : [ env : env.toUpperCase() ] )
+    filter ( ReplaceTokens       , tokens : envProperties )
+    filter ( FixCrLfFilter.class , eol:FixCrLfFilter.CrLf.newInstance ( "lf" ) )
+    
+    doLast {
+       final String setPermissionsCommand = 'chmod -R 770 ' + PATH_TO_TARGET_APWIDE_SCRIPTS_FOLDER;
+
+        ShellCommand.execute ( envProperties.deployerUsername , setPermissionsCommand);
+    }
+}
+
+task apwideStatusUp(type: Exec , dependsOn: prepareApwideScripts ) {
+ignoreExitValue true
+ workingDir prepareApwideScripts.destinationDir
+ commandLine "./apwide.sh"
+ args           = [ 'status-change' , '{ \"id\": 1}' ]
+}
+
+task apwideStatusSlow(type: Exec , dependsOn: prepareApwideScripts ) {
+ignoreExitValue true
+ workingDir prepareApwideScripts.destinationDir
+ commandLine "./apwide.sh"
+ args           = [ 'status-change' , '{ \"id\": 2}' ]
+}
+
+task apwideStatusDeploy(type: Exec , dependsOn: prepareApwideScripts ) {
+ignoreExitValue true
+ workingDir prepareApwideScripts.destinationDir
+ commandLine "./apwide.sh"
+ args           = [ 'status-change' , '{ \"id\": 3}' ]
+}
+
+
+task apwideStatusDown(type: Exec , dependsOn: prepareApwideScripts ) {
+ignoreExitValue true
+ workingDir prepareApwideScripts.destinationDir
+ commandLine "./apwide.sh"
+ args           = [ 'status-change' , '{ \"id\": 21}' ]
+}
+
+task apwideVersionUpdate ( dependsOn: prepareApwideScripts ) {
+ doLast {
+    exec {
+          workingDir prepareApwideScripts.destinationDir
+         commandLine "./apwide.sh"
+         args           = [ 'deployment', '{ \"versionName\": \"'+ envProperties.versionTo + '\",    \"deployer\": \"bamboo\"}' ]
+          }
+         }
+}

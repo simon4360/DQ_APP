@@ -1,0 +1,13 @@
+CREATE TABLE G77_CFG.T_DMP_FINANCE_UPD_HIST
+    ( DMP_ROW_ID                 NUMBER(9)              NOT NULL
+    , METADATA_ID                NUMBER                 NOT NULL
+    , UPDATE_COUNT               NUMBER                 NOT NULL
+    , MODIFIED_BY                VARCHAR2(100 CHAR)
+    , MODIFIED_TIME              DATE
+    , APPROVED_BY                VARCHAR2(100 BYTE)
+    , SOURCE_SYSTEM_VALUE1       VARCHAR2(100 CHAR)
+    , SOURCE_SYSTEM_VALUE1_DESC  VARCHAR2(200 CHAR)
+    , REQUEST_TYPE               VARCHAR2(32)
+    , REQUEST_COUNT              NUMBER
+    , CONSTRAINT PK_DMP_FINANCE_UPD_HIST PRIMARY KEY (DMP_ROW_ID, UPDATE_COUNT)  
+);

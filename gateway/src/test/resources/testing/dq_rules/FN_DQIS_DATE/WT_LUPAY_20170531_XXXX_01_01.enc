@@ -1,0 +1,4 @@
+HEADR|"Report date|"Pay cycle|"Country code|"Entity ID|"Entity name|"Currency|"GL account|"GL description|"Cost Center Code|"Cost Center description|"Business Area|"Internal order|"Amount debit|"Amount credit|"Pay element Code|"Pay element description|"Attribute 3|"Attribute 4|"Attribute 5|"Attribute 6|"Attribute 7|"Attribute 8|"Attribute 9|"Attribute 10|"Attribute 11|"Attribute 12|"Attribute 13|"Attribute 14|"Attribute 15
+GLDATA|"13/03/2017|"31/03/2017|"LU|"9BML|"Swiss Re Corporate Solutions Services s.r.o.|"EUR|"8163000|"Other Social Security expenses|"PPCWCPA|"Legal finality|"|"|"5000|"0|"1|"Brut de base|"|"|"|"|"|"|"|"|"|"|"|"|"
+GLDATA|"130317|"31/03/2017|"LU|"9BML|"Swiss Re Corporate Solutions Services s.r.o.|"EUR|"0008163000|"Other Social Security expenses|"PPCWCPA|"Legal finality|"|"|"0|"5000|"1|"Brut de base|"|"|"|"|"|"|"|"|"|"|"|"|"
+TRAIL|"4
