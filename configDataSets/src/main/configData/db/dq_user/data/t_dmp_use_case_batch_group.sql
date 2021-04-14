@@ -1,5 +1,5 @@
--- Insert into g77_cfg.t_dmp_use_case_batch_group
-delete from g77_cfg.t_dmp_use_case_batch_group;
+-- Insert into DQ_USER.t_dmp_use_case_batch_group
+delete from DQ_USER.t_dmp_use_case_batch_group;
 
 SET DEFINE OFF;
 Insert into T_DMP_USE_CASE_BATCH_GROUP (USE_CASE_ID,GROUP_ID,APTITUDE_PROJECT,MICROFLOW,DMP_ORDER) values ('UCN1011',2,'g77_library','run_dq_rules_row',3);

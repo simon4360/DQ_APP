@@ -1,4 +1,4 @@
-Delete from G77_CFG.T_DMP_DQ_LOG_MD;
+Delete from DQ_USER.T_DMP_DQ_LOG_MD;
 
 SET DEFINE OFF;
 Insert into T_DMP_DQ_LOG_MD (COL_IDENTIFIER,COL_METADATA) values ('COL1-HEADER','DQ Status');

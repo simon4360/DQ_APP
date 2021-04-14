@@ -4,12 +4,12 @@
 @@t_meta_table_cfg.sql
 @@t_meta_batch_task_cfg.sql
 @@t_meta_batch_task_table_x_cfg.sql
-@@t_meta_table_dq_cfg.sql
 
 @@t_dq_error_messages_cfg.sql
 @@t_dq_severity_cfg.sql
 @@t_dq_condition_cfg.sql
 @@t_dq_function_cfg.sql
+@@t_meta_table_dq_cfg.sql
 @@t_file_config.sql
 @@t_null_handling.sql
 

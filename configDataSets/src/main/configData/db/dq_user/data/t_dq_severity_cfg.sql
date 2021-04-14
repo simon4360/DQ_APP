@@ -2,7 +2,7 @@ declare
   c int;
   target_table_name varchar2(30) := 't_dq_severity';
   merge_table_name  varchar2(30) := target_table_name || '_cfg';
-  target_schema     varchar2(30) := 'g77_cfg';
+  target_schema     varchar2(30) := 'DQ_USER';
 begin
 
   -- Tidy up and create merge table
@@ -21,24 +21,24 @@ end;
 
 -- Insert configuration
 set define off
-insert into g77_cfg.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
+insert into DQ_USER.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
   values (1, 'Warning', 'Send transaction through with warning' );
-insert into g77_cfg.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
+insert into DQ_USER.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
   values (2, 'Hold', 'Hold transaction' );
-insert into g77_cfg.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
+insert into DQ_USER.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
   values (3, 'Error', 'Fail only erroneous transactions back to source system for fixing' );
-insert into g77_cfg.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
+insert into DQ_USER.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
   values (4, 'Batch Fails', 'Fail entire batch back to source system for fixing' );  
-insert into g77_cfg.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
+insert into DQ_USER.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
   values (5, 'Hold Batch', 'Hold entire batch' );
-insert into g77_cfg.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
+insert into DQ_USER.t_dq_severity_cfg ( dq_severity_id, dq_severity, dq_severity_desc ) 
   values (6, 'Discard Data', 'Discard and exclude from reprocesing' );  
 commit;
 
 declare
   target_table_name varchar2(30) := 't_dq_severity';
   merge_table_name  varchar2(30) := target_table_name || '_cfg';
-  target_schema     varchar2(30) := 'g77_cfg';
+  target_schema     varchar2(30) := 'DQ_USER';
 begin
   -- Delete removed configuration
   execute immediate '

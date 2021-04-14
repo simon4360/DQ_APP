@@ -1,5 +1,5 @@
--- Insert into g77_cfg.t_dmp_use_case_group
-delete from g77_cfg.t_dmp_use_case_group;
+-- Insert into DQ_USER.t_dmp_use_case_group
+delete from DQ_USER.t_dmp_use_case_group;
 
 REM INSERTING into T_DMP_USE_CASE_GROUP
 SET DEFINE OFF;

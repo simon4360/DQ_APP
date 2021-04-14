@@ -1,4 +1,5 @@
 @@fn_generate_key.sql
+@@fn_get_arc_table_name.sql
 @@fn_get_session_id.sql
 @@fn_get_finc_prd.sql
 @@fn_get_hash.sql

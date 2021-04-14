@@ -1,4 +1,4 @@
-delete from g77_cfg.t_null_handling;
+delete from DQ_USER.t_null_handling;
 
 Insert into T_NULL_HANDLING (DATA_TYPE,HANDLING_STRING,TO_FUNCTION,FUNCTION_CLOSE) values ('NUMBER','9999999999','TO_CHAR(',')');
 Insert into T_NULL_HANDLING (DATA_TYPE,HANDLING_STRING,TO_FUNCTION,FUNCTION_CLOSE) values ('DATE','01-JAN-2000','TO_CHAR(',',''DDMMYYYY'')');
