@@ -1,0 +1,1 @@
+alter table DQ_USER.T_META_BATCH_TASK add constraint fk_bt_interface_id foreign key(INTERFACE_ID) references DQ_USER.T_META_INTERFACE(interface_id) ON DELETE CASCADE ENABLE;

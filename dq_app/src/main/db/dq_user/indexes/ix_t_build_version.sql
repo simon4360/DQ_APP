@@ -1,0 +1,1 @@
+create unique index DQ_USER.ux_build_version on t_build_version ('1');

@@ -1,0 +1,1 @@
+create or replace synonym DQ_USER.t_project_config for DQ_USER.t_meta_interface;

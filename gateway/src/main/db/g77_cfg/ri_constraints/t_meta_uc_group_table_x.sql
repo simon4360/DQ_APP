@@ -1,1 +1,0 @@
-alter table G77_CFG.t_meta_uc_group_table_x add constraint fk_ucgrp_table foreign key(TABLE_ID) references G77_CFG.T_META_TABLE(TABLE_ID) ON DELETE CASCADE ENABLE;
