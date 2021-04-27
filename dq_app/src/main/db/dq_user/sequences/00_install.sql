@@ -4,3 +4,4 @@
 @@sq_t_file_control.sql
 @@sq_t_dq_config_aud.sql
 @@sq_session_id.sql
+@@sq_dq_process_id.sql

@@ -12,7 +12,6 @@ BEGIN
             ,DQ_PURPOSE
             ,DQ_CORRECTIVE_ACTION
             ,DQ_CONTACT_TEAM
-            ,DQ_USE_CASE_ID        
             ,DQ_SEVERITY_ID        
             ,DQ_RULE_TYPE          
             ,DQ_RULE_CATEGORY      
@@ -36,7 +35,6 @@ BEGIN
           ,:new.DQ_PURPOSE
           ,:new.DQ_CORRECTIVE_ACTION
           ,:new.DQ_CONTACT_TEAM
-          ,:new.DQ_USE_CASE_ID           
           ,:new.DQ_SEVERITY_ID           
           ,:new.DQ_RULE_TYPE             
           ,:new.DQ_RULE_CATEGORY         
@@ -63,7 +61,6 @@ BEGIN
             ,DQ_PURPOSE
             ,DQ_CORRECTIVE_ACTION
             ,DQ_CONTACT_TEAM                           
-            ,DQ_USE_CASE_ID        
             ,DQ_SEVERITY_ID        
             ,DQ_RULE_TYPE          
             ,DQ_RULE_CATEGORY      
@@ -87,7 +84,6 @@ BEGIN
           ,:new.DQ_PURPOSE
           ,:new.DQ_CORRECTIVE_ACTION                  
           ,:new.DQ_CONTACT_TEAM
-          ,:new.DQ_USE_CASE_ID           
           ,:new.DQ_SEVERITY_ID           
           ,:new.DQ_RULE_TYPE             
           ,:new.DQ_RULE_CATEGORY         

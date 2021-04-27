@@ -1,19 +1,12 @@
-create or replace view DQ_USER.v_meta_batch_task_dq_all 
-as
-select 
-  DQ_ACTIVATION
-, DQ_ACTIVE_INDICATOR
-, DQ_APTITUDE_PROJECT
-, DQ_MICROFLOW
+CREATE OR REPLACE VIEW DQ_USER.V_META_BATCH_TASK_DQ_ALL
+AS
+  select 
+  DQ_ACTIVE_INDICATOR
 , DQ_STAGING_TABLE
 , DQ_COLUMN_NAME
 , DQ_LEGAL_ENTITY_COLUMN
-, DQ_TYPE
 , DQ_CONFIG_ID
-, CASE WHEN DQ_ACTIVATION = 'AT BATCH TASK RESTART' and lower(DQ_MICROFLOW) like '%wrapper' and DQ_USE_CASE_ID = 'ACQUIRE_G71'
-       THEN 'ALL'
-       ELSE DQ_USE_CASE_ID
-   END as DQ_USE_CASE_ID  --needed so that we pick up DQ rules correctly. As the Use_case_id changes from ACQUIRE_G71 to a real use case we can't configure this correctly
+, DQ_FUNCTION
 , DQ_RULE_TYPE
 , DQ_RULE_CATEGORY
 , DQ_PURPOSE
@@ -46,32 +39,16 @@ select
      ||'  set target.event_status   = dq_fails.event_status'                                                    || chr(10) 
       as DQ_MERGE_SQL
 , 'SELECT count(*) '|| chr(10) 
-||'  FROM DQ_USER.'|| DQ_STAGING_TABLE  || chr(10)
-||' WHERE '|| case when DQ_TYPE = 'no_use_case_id' then 'UC_SESSION_ID' else 'SESSION_ID' end || ' = ''' || 'REGEX_SESSION' || ''''
-                                                     AS DQ_COUNT_SQL
-, 'SELECT count(*) '|| chr(10) 
-||'  FROM DQ_USER.'|| DQ_STAGING_TABLE  || chr(10)
-|| DQ_WHERE_SQL  AS DQ_USE_CASE_ERR_SQL
+||'  FROM DQ_USER.'|| DQ_STAGING_TABLE  AS DQ_COUNT_SQL
 , DQ_WHERE_SQL as DQ_WHERE_SQL
 FROM 
-(
-select distinct
-            case when btx.object_role = 'inbound'
-                 -- DQ's are triggered in input table of process when restarting a batch task.
-                 then 'AT BATCH TASK RESTART'          
-                 when btx.object_role = 'outbound'
-                 -- DQ's are triggered in outbound table of process at end of batch task.
-                 then 'NORMAL'                         
-             end                                                              as DQ_ACTIVATION
-           , dqc.dq_active_indicator                                          as DQ_ACTIVE_INDICATOR
-           , i.aptitude_project                                               as DQ_APTITUDE_PROJECT
-           , bt.process_name                                                  as DQ_MICROFLOW
+(select distinct
+             dqc.dq_active_indicator                                          as DQ_ACTIVE_INDICATOR
            , t.table_name                                                     as DQ_STAGING_TABLE
            , dqc.dq_column_name                                               as DQ_COLUMN_NAME
            , t.legal_entity_column                                            as DQ_LEGAL_ENTITY_COLUMN
-           , decode ( btx.dq_checks, 'n/a', 'default', btx.dq_checks )        as DQ_TYPE
            , dqc.dq_config_id                                                 as DQ_CONFIG_ID
-           , dqc.dq_use_case_id                                               as DQ_USE_CASE_ID
+		   , func.dq_function
            , dqc.dq_rule_type                                                 as DQ_RULE_TYPE
            , dqc.dq_rule_category                                             as DQ_RULE_CATEGORY
            , dqc.dq_purpose                                                   as DQ_PURPOSE
@@ -83,14 +60,6 @@ select distinct
                   then nvl(dqc.dq_join, ' 1 = 1') 
               end
            ||'        WHERE ' || NVL(cond.dq_condition, ' 1 = 1 ') || chr(10) 
-           ||'          AND ' || case when btx.dq_checks = 'no_use_case_id' 
-                                      then 'UC_SESSION_ID' 
-                                      else 'SESSION_ID' 
-                                  end ||'   = ''' || 'REGEX_SESSION'  || '''' || chr(10) 
-           ||                    case when btx.dq_checks = 'no_use_case_id' 
-                                      then  ''             
-                                      else '          AND lower(USE_CASE_ID)    = lower(''' || 'REGEX_USE_CASE' || ''')' || chr(10) 
-                                  end  
            ||'          AND ' || case when lower(dqc.dq_method) = lower('FUNCTION')
                                       then 'DQ_USER.' || case nvl (dqc.dq_function_parameters, '1') 
                                                              when '1' 
@@ -103,12 +72,6 @@ select distinct
                                       then nvl(dqc.dq_where_clause, ' 1 = 1')
                                   end                                         as DQ_WHERE_SQL
       from DQ_USER.t_meta_table t
-inner join DQ_USER.t_meta_batch_task_table_x btx
-        on t.table_id = btx.table_id
-inner join DQ_USER.t_meta_batch_task bt
-        on btx.batch_task_id = bt.batch_task_id
-inner join DQ_USER.t_meta_interface i
-        on bt.interface_id = i.interface_id
 inner join DQ_USER.t_meta_table_dq dqc
         on dqc.table_id = t.table_id
  left join DQ_USER.t_dq_function func
@@ -118,11 +81,7 @@ inner join DQ_USER.t_meta_table_dq dqc
  left join DQ_USER.t_dq_error_messages err
         on dqc.dq_message_id = err.dq_message_id 
      WHERE 1=1
-       and btx.dq_checks <> 'do_not_dq'
        and t.schema_name        = 'DQ_USER'
        and t.active_indicator   = 'A'
-       and btx.active_indicator = 'A'
-       and bt.active_indicator  = 'A'
-       and i.is_active          = 'A'
 );
- /
+/

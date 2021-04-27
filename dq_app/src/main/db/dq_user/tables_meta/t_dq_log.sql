@@ -4,10 +4,7 @@ CREATE TABLE DQ_USER.T_DQ_LOG
     ,DQ_STATUS                     VARCHAR2(50 BYTE)   NOT NULL     
     ,DQ_TIMESTAMP                  DATE                NOT NULL
     ,BATCH_PROCESS_ID              NUMBER(12)          NOT NULL 
-    ,DQ_SESSION_ID                 VARCHAR2(200 BYTE)  NOT NULL 
-    ,DQ_USE_CASE_ID                VARCHAR2(200 BYTE)  NOT NULL
-    ,DQ_APTITUDE_PROJECT           VARCHAR2(50 BYTE)   NOT NULL 
-    ,DQ_APTITUDE_MICROFLOW         VARCHAR2(200 BYTE)
+    ,DQ_EVENT_SOURCE               VARCHAR2(200 BYTE)  NOT NULL 
     ,DQ_TABLE_NAME                 VARCHAR2(30 BYTE)   NOT NULL
     ,DQ_COLUMN_NAME                VARCHAR2(500 BYTE)  NOT NULL  
     ,DQ_PURPOSE                    VARCHAR2(1000 BYTE)

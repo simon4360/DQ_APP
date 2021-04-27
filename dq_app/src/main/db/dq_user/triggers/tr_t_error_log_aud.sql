@@ -9,7 +9,6 @@ BEGIN
              EVENT_ID              
            , EVENT_DATETIME        
            , ERROR_STATUS          
-           , ERROR_APTITUDE_PROJECT
            , ERROR_RULE_IDENT      
            , ERROR_TEXT            
            , BATCH_PROCESS_ID      
@@ -38,7 +37,6 @@ BEGIN
              :new.EVENT_ID              
            , :new.EVENT_DATETIME        
            , :new.ERROR_STATUS          
-           , :new.ERROR_APTITUDE_PROJECT
            , :new.ERROR_RULE_IDENT      
            , :new.ERROR_TEXT            
            , :new.BATCH_PROCESS_ID      
@@ -70,7 +68,6 @@ BEGIN
              EVENT_ID              
            , EVENT_DATETIME        
            , ERROR_STATUS          
-           , ERROR_APTITUDE_PROJECT
            , ERROR_RULE_IDENT      
            , ERROR_TEXT            
            , BATCH_PROCESS_ID      
@@ -99,7 +96,6 @@ BEGIN
              :new.EVENT_ID              
            , :new.EVENT_DATETIME        
            , :new.ERROR_STATUS          
-           , :new.ERROR_APTITUDE_PROJECT
            , :new.ERROR_RULE_IDENT      
            , :new.ERROR_TEXT            
            , :new.BATCH_PROCESS_ID      
