@@ -876,13 +876,12 @@ merge into DQ_USER.t_meta_table_dq target
             ,cfg.dq_purpose
             ,cfg.dq_corrective_action
             ,cfg.dq_contact_team
-            ,cfg.dq_use_case_id
             ,cfg.dq_severity_id
             ,cfg.dq_rule_type
             ,cfg.dq_rule_category
             ,cfg.dq_method
-            ,cfg.dq_function_id
             ,cfg.dq_message_id
+            ,cfg.dq_function_id
             ,cfg.dq_function_parameters
             ,cfg.dq_where_clause
             ,cfg.dq_join
@@ -922,13 +921,12 @@ merge into DQ_USER.t_meta_table_dq target
             ,cfg.dq_purpose
             ,cfg.dq_corrective_action
             ,cfg.dq_contact_team
-            ,cfg.dq_use_case_id
             ,cfg.dq_severity_id
             ,cfg.dq_rule_type
             ,cfg.dq_rule_category
             ,cfg.dq_method
-            ,cfg.dq_function_id
             ,cfg.dq_message_id
+            ,cfg.dq_function_id
             ,cfg.dq_function_parameters
             ,cfg.dq_where_clause
             ,cfg.dq_join
@@ -977,13 +975,12 @@ merge into DQ_USER.t_meta_table_dq target
              ,target.dq_purpose
              ,target.dq_corrective_action
              ,target.dq_contact_team
-             ,target.dq_use_case_id
              ,target.dq_severity_id
              ,target.dq_rule_type
              ,target.dq_rule_category
              ,target.dq_method
-             ,target.dq_function_id
              ,target.dq_message_id
+             ,target.dq_function_id
              ,target.dq_function_parameters
              ,target.dq_where_clause
              ,target.dq_join
@@ -1001,13 +998,12 @@ merge into DQ_USER.t_meta_table_dq target
              ,cfg.dq_purpose
              ,cfg.dq_corrective_action
              ,cfg.dq_contact_team
-             ,cfg.dq_use_case_id
              ,cfg.dq_severity_id
              ,cfg.dq_rule_type
              ,cfg.dq_rule_category
              ,cfg.dq_method
-             ,cfg.dq_function_id
              ,cfg.dq_message_id
+             ,cfg.dq_function_id
              ,cfg.dq_function_parameters
              ,cfg.dq_where_clause
              ,cfg.dq_join
