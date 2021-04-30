@@ -14,7 +14,7 @@
 @@t_null_handling.sql
 
 -- DMP
-@@t_dmp_batch_status_md.sql
+/*@@t_dmp_batch_status_md.sql
 @@t_dmp_dq_log_md.sql
 @@t_dmp_dq_rules_md.sql
 @@t_dmp_error_md.sql
@@ -25,5 +25,5 @@
 @@t_dmp_use_case_category.sql
 @@t_dmp_use_case_config.sql
 @@t_dmp_use_case_group.sql
-
+*/
 COMMIT;
