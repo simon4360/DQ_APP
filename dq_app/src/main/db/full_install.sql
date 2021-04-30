@@ -31,9 +31,9 @@ prompt Logging in as DQ_USER
 @dq_user/synonyms/00_install.sql
 
 --Install DMP
-@dq_user/dmp/tables/00_install.sql
-@dq_user/dmp/views/00_install.sql
-@dq_user/dmp/functions/00_install.sql
+--@dq_user/dmp/tables/00_install.sql
+--@dq_user/dmp/views/00_install.sql
+--@dq_user/dmp/functions/00_install.sql
 
 commit;
 
