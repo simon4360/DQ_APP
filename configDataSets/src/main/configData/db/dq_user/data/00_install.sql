@@ -26,4 +26,8 @@
 @@t_dmp_use_case_config.sql
 @@t_dmp_use_case_group.sql
 */
+
+--Test Data
+@@t_financial_transactions.sql
+
 COMMIT;
